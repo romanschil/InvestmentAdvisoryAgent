@@ -193,6 +193,8 @@ def build_performance_series(history: list):
 
     try:
         bench_raw = yf.download(BENCHMARK_TICKER, start=first_date, progress=False)["Close"]
+        if isinstance(bench_raw, pd.DataFrame):
+            bench_raw = bench_raw.iloc[:, 0]  # auf Series reduzieren, falls DataFrame zurueckkommt
     except Exception:
         bench_raw = None
     if bench_raw is not None:

@@ -2,14 +2,18 @@
 Taeglicher Investment Advisory Agent
 =====================================
 Screent ein Anlageuniversum anhand von Marktdaten, laesst Claude die Top 3
-Titel auswaehlen und begruenden, und fuehrt eine History mit, wie sich diese
-Tipps entwickelt haetten (hypothetischer Kauf, kein echter Trade).
+Titel auswaehlen und begruenden, fuehrt eine History (hypothetischer Kauf)
+und erzeugt ein Web-Dashboard (dashboard/index.html fuer GitHub Pages) mit
+Performance-Kurve, S&P-500-Vergleich und Win-Rate. Die E-Mail bleibt kurz
+und verlinkt aufs Dashboard.
 
 Setup:
-1. pip install anthropic yfinance
+1. pip install anthropic yfinance pandas
 2. Umgebungsvariablen setzen: ANTHROPIC_API_KEY, SMTP_USER, SMTP_PASSWORD
-3. Als Cronjob einrichten, z.B. taeglich um 07:00:
-   0 7 * * * /usr/bin/python3 /pfad/zu/investment_advisory_agent.py
+3. DASHBOARD_URL unten auf deine echte GitHub-Pages-URL anpassen
+4. GitHub Pages aktivieren: Repo -> Settings -> Pages -> Source: "Deploy
+   from a branch" -> Branch "main", Ordner "/docs"
+5. Als taeglichen Workflow (GitHub Actions) laufen lassen
 
 WICHTIG: Dies ist KEINE Anlageberatung. Der Agent fuehrt keine echten Trades
 aus. Alle Ausgaben sind automatisiert generierte Analysen auf Basis
@@ -26,22 +30,27 @@ from datetime import date
 
 import anthropic
 import yfinance as yf
+import pandas as pd
 
 # ---------------------------------------------------------------------------
 # KONFIGURATION - hier anpassen
 # ---------------------------------------------------------------------------
 
-BUDGET_CHF = 5000       # hypothetisches Startkapital fuer die Simulation
-TOP_N = 3                # Anzahl Titel, die taeglich vorgeschlagen werden
+BUDGET_CHF = 5000
+TOP_N = 3
 
-# Anlageuniversum: aus diesen Titeln waehlt der Agent aus.
-# Beliebig erweiterbar/anpassbar (Aktien, ETFs, Rohstoffe, Indizes ...)
 CANDIDATE_UNIVERSE = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
     "VOO", "VWCE.DE", "GLD", "NESN.SW", "NOVN.SW", "ASML",
 ]
 
+BENCHMARK_TICKER = "^GSPC"  # S&P 500 zum Vergleich
+
 RECIPIENT_EMAIL = "roman.schilling@bluewin.ch"
+
+# WICHTIG: nach Aktivieren von GitHub Pages auf die echte URL anpassen
+# Format: https://<dein-github-username>.github.io/<repo-name>/
+DASHBOARD_URL = "https://romanschil.github.io/InvestmentAdvisoryAgent/"
 
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
@@ -53,7 +62,10 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 RISK_PROFILE = "ausgewogen"
 HORIZON = "mittel- bis langfristig"
 
-HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "advisory_history.json")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+HISTORY_FILE = os.path.join(BASE_DIR, "advisory_history.json")
+DASHBOARD_DIR = os.path.join(BASE_DIR, "docs")
+DASHBOARD_FILE = os.path.join(DASHBOARD_DIR, "index.html")
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +73,6 @@ HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "advisor
 # ---------------------------------------------------------------------------
 
 def fetch_market_data(tickers: list[str]) -> dict:
-    """Holt aktuellen Kurs, Tages- und Monatsveraenderung fuer eine Tickerliste."""
     data = {}
     for ticker in tickers:
         try:
@@ -96,7 +107,7 @@ def build_candidates_summary(market_data: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 2. HISTORY / TRACKRECORD
+# 2. HISTORY
 # ---------------------------------------------------------------------------
 
 def load_history() -> list:
@@ -111,9 +122,7 @@ def save_history(history: list):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
-def compute_track_record(history: list) -> str:
-    """Berechnet fuer alle bisherigen Picks die Performance bis heute
-    (hypothetisch, gleich gewichteter Einsatz von BUDGET_CHF / TOP_N pro Pick)."""
+def compute_track_record_text(history: list) -> str:
     if not history:
         return "Noch keine frueheren Tipps vorhanden -- Start der History heute."
 
@@ -124,13 +133,11 @@ def compute_track_record(history: list) -> str:
     total_invested = 0.0
     total_now = 0.0
     for entry in history:
-        entry_date = entry["date"]
         for pick in entry["picks"]:
             ticker = pick["ticker"]
             entry_price = pick["entry_price"]
-            cur = current.get(ticker, {})
-            cur_price = cur.get("price")
-            if cur_price is None or entry_price in (None, 0):
+            cur_price = current.get(ticker, {}).get("price")
+            if cur_price is None or not entry_price:
                 continue
             stake = BUDGET_CHF / TOP_N
             shares = stake / entry_price
@@ -138,19 +145,104 @@ def compute_track_record(history: list) -> str:
             perf_pct = (cur_price - entry_price) / entry_price * 100
             total_invested += stake
             total_now += now_value
-            lines.append(
-                f"- {entry_date} | {ticker}: Einstieg {entry_price} -> "
-                f"aktuell {cur_price} ({perf_pct:+.2f}%)"
-            )
+            lines.append(f"- {entry['date']} | {ticker}: {entry_price} -> {cur_price} ({perf_pct:+.2f}%)")
 
     if total_invested > 0:
         overall_pct = (total_now - total_invested) / total_invested * 100
-        lines.append(
-            f"\nGesamt (alle Picks, je {BUDGET_CHF/TOP_N:.0f} CHF Einsatz): "
-            f"{total_invested:.2f} CHF -> {total_now:.2f} CHF ({overall_pct:+.2f}%)"
-        )
+        lines.append(f"\nGesamt: {total_invested:.2f} CHF -> {total_now:.2f} CHF ({overall_pct:+.2f}%)")
 
     return "\n".join(lines)
+
+
+def compute_win_rate(history: list):
+    all_tickers = sorted({p["ticker"] for entry in history for p in entry["picks"]})
+    if not all_tickers:
+        return None
+    current = fetch_market_data(all_tickers)
+    wins, total = 0, 0
+    for entry in history:
+        for pick in entry["picks"]:
+            cur_price = current.get(pick["ticker"], {}).get("price")
+            if cur_price is None or not pick["entry_price"]:
+                continue
+            total += 1
+            if cur_price > pick["entry_price"]:
+                wins += 1
+    if total == 0:
+        return None
+    return {"wins": wins, "total": total, "pct": round(wins / total * 100, 1)}
+
+
+def build_performance_series(history: list):
+    """Baut eine taegliche Zeitreihe: Portfolio-Wert (alle Picks, gleich
+    gewichtet, gehalten seit Kaufdatum) vs. Benchmark (S&P 500), simuliert
+    mit denselben Einzahlungsbetraegen an denselben Tagen."""
+    if not history:
+        return None
+
+    first_date = min(entry["date"] for entry in history)
+    all_tickers = sorted({p["ticker"] for entry in history for p in entry["picks"]})
+
+    try:
+        raw = yf.download(all_tickers, start=first_date, progress=False)["Close"]
+    except Exception:
+        return None
+    if isinstance(raw, pd.Series):
+        raw = raw.to_frame(name=all_tickers[0])
+    prices = raw.ffill()
+
+    try:
+        bench_raw = yf.download(BENCHMARK_TICKER, start=first_date, progress=False)["Close"]
+    except Exception:
+        bench_raw = None
+    if bench_raw is not None:
+        bench = bench_raw.reindex(prices.index).ffill()
+    else:
+        bench = None
+
+    stake = BUDGET_CHF / TOP_N
+    dates_out, portfolio_out, benchmark_out, invested_out = [], [], [], []
+
+    bench_shares = 0.0
+    invested_so_far = 0.0
+
+    for current_date in prices.index:
+        date_str = current_date.strftime("%Y-%m-%d")
+
+        # neu investierte Betraege an diesem Tag (fuer Benchmark-Simulation)
+        newly_invested = sum(
+            stake * len(entry["picks"]) for entry in history if entry["date"] == date_str
+        )
+        invested_so_far += newly_invested
+
+        # Portfolio-Wert: Summe aller bisherigen Picks zu heutigen Kursen
+        total = 0.0
+        for entry in history:
+            if entry["date"] > date_str:
+                continue
+            for pick in entry["picks"]:
+                ticker = pick["ticker"]
+                entry_price = pick["entry_price"]
+                if not entry_price or ticker not in prices.columns:
+                    continue
+                price_now = prices.loc[current_date, ticker]
+                if pd.isna(price_now):
+                    continue
+                shares = stake / entry_price
+                total += shares * price_now
+
+        # Benchmark-Wert: gleiche Einzahlungen, aber in S&P 500 investiert
+        bench_price = bench.loc[current_date] if bench is not None else None
+        if newly_invested > 0 and bench_price is not None and not pd.isna(bench_price):
+            bench_shares += newly_invested / float(bench_price)
+        bench_value = bench_shares * float(bench_price) if bench_price is not None and not pd.isna(bench_price) else None
+
+        dates_out.append(date_str)
+        portfolio_out.append(round(total, 2))
+        benchmark_out.append(round(bench_value, 2) if bench_value is not None else None)
+        invested_out.append(round(invested_so_far, 2))
+
+    return {"dates": dates_out, "portfolio": portfolio_out, "benchmark": benchmark_out, "invested": invested_out}
 
 
 # ---------------------------------------------------------------------------
@@ -198,12 +290,120 @@ Waehle die Top {TOP_N} Titel und antworte im vorgegebenen JSON-Format."""
     try:
         return json.loads(clean)
     except json.JSONDecodeError:
-        # Fallback: falls Claude kein valides JSON liefert, roh zurueckgeben
         return {"picks": [], "commentary": text}
 
 
 # ---------------------------------------------------------------------------
-# 4. E-MAIL VERSENDEN
+# 4. DASHBOARD (HTML fuer GitHub Pages)
+# ---------------------------------------------------------------------------
+
+def render_dashboard(picks_today, commentary, win_rate, perf_series, market_data):
+    win_rate_html = (
+        f"{win_rate['wins']} von {win_rate['total']} Picks im Plus ({win_rate['pct']}%)"
+        if win_rate else "Noch keine Daten"
+    )
+
+    picks_html = "".join(
+        f"""<div class="card">
+              <h3>{p.get('ticker')}</h3>
+              <p class="price">Kurs heute: {market_data.get(p.get('ticker'), {}).get('price', 'n/a')}</p>
+              <p>{p.get('rationale', '')}</p>
+            </div>"""
+        for p in picks_today
+    )
+
+    if perf_series:
+        chart_labels = json.dumps(perf_series["dates"])
+        chart_portfolio = json.dumps(perf_series["portfolio"])
+        chart_benchmark = json.dumps(perf_series["benchmark"])
+        chart_invested = json.dumps(perf_series["invested"])
+    else:
+        chart_labels = chart_portfolio = chart_benchmark = chart_invested = "[]"
+
+    return f"""<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investment Advisory Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {{ color-scheme: light dark; }}
+  body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 900px;
+          margin: 0 auto; padding: 24px 16px; background: #0f172a; color: #e2e8f0; }}
+  h1 {{ font-size: 1.5rem; margin-bottom: 4px; }}
+  .updated {{ color: #94a3b8; font-size: 0.85rem; margin-bottom: 24px; }}
+  .stat-row {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .stat {{ background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 140px; }}
+  .stat .label {{ font-size: 0.8rem; color: #94a3b8; }}
+  .stat .value {{ font-size: 1.3rem; font-weight: 600; margin-top: 4px; }}
+  .cards {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }}
+  .card {{ background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 220px; }}
+  .card h3 {{ margin: 0 0 8px 0; color: #38bdf8; }}
+  .card .price {{ color: #94a3b8; font-size: 0.85rem; }}
+  .commentary {{ background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; line-height: 1.5; }}
+  .chart-box {{ background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; }}
+  .disclaimer {{ color: #64748b; font-size: 0.75rem; line-height: 1.4; }}
+</style>
+</head>
+<body>
+  <h1>Investment Advisory Dashboard</h1>
+  <div class="updated">Letztes Update: {date.today().strftime('%d.%m.%Y')}</div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="label">Budget (hypothetisch)</div><div class="value">{BUDGET_CHF} CHF</div></div>
+    <div class="stat"><div class="label">Win-Rate</div><div class="value">{win_rate_html}</div></div>
+  </div>
+
+  <div class="commentary"><strong>Marktkommentar</strong><br>{commentary}</div>
+
+  <h2>Top {TOP_N} heute</h2>
+  <div class="cards">{picks_html}</div>
+
+  <div class="chart-box">
+    <h2>Performance vs. S&amp;P 500</h2>
+    <canvas id="perfChart" height="260"></canvas>
+  </div>
+
+  <p class="disclaimer">
+    Keine Anlageberatung. Automatisiert generierte Analyse auf Basis oeffentlicher
+    Marktdaten. Die Performance-Kurve ist eine Simulation (hypothetischer Kauf zu
+    Empfehlungskurs, gleich gewichtet, keine Gebuehren/Steuern beruecksichtigt) und
+    keine Garantie fuer zukuenftige Ergebnisse.
+  </p>
+
+<script>
+  const labels = {chart_labels};
+  const portfolio = {chart_portfolio};
+  const benchmark = {chart_benchmark};
+  const invested = {chart_invested};
+
+  new Chart(document.getElementById('perfChart'), {{
+    type: 'line',
+    data: {{
+      labels: labels,
+      datasets: [
+        {{ label: 'Agent-Portfolio', data: portfolio, borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 }},
+        {{ label: 'S&P 500 (gleiche Einzahlungen)', data: benchmark, borderColor: '#f472b6', tension: 0.2, pointRadius: 0 }},
+        {{ label: 'Eingezahlt', data: invested, borderColor: '#64748b', borderDash: [4,4], tension: 0, pointRadius: 0 }}
+      ]
+    }},
+    options: {{
+      responsive: true,
+      scales: {{
+        x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 8 }} }},
+        y: {{ ticks: {{ color: '#94a3b8' }} }}
+      }},
+      plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
+    }}
+  }});
+</script>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# 5. E-MAIL (kurz, mit Link zum Dashboard)
 # ---------------------------------------------------------------------------
 
 def send_email(subject: str, body: str):
@@ -228,7 +428,7 @@ def send_email(subject: str, body: str):
 
 def main():
     history = load_history()
-    track_record = compute_track_record(history)
+    track_record = compute_track_record_text(history)
 
     market_data = fetch_market_data(CANDIDATE_UNIVERSE)
     candidates_summary = build_candidates_summary(market_data)
@@ -237,34 +437,35 @@ def main():
     picks = result.get("picks", [])
     commentary = result.get("commentary", "")
 
-    # Heutige Picks in History aufnehmen (mit Einstiegskurs von heute)
     today_entry = {"date": date.today().isoformat(), "picks": []}
-    pick_lines = []
     for p in picks:
         ticker = p.get("ticker")
-        info = market_data.get(ticker, {})
-        entry_price = info.get("price")
+        entry_price = market_data.get(ticker, {}).get("price")
         today_entry["picks"].append({"ticker": ticker, "entry_price": entry_price})
-        pick_lines.append(
-            f"- {ticker} (Kurs heute: {entry_price}): {p.get('rationale', '')}"
-        )
 
     if today_entry["picks"]:
         history.append(today_entry)
         save_history(history)
 
-    subject = f"Investment Advisory Report - {date.today().strftime('%d.%m.%Y')}"
+    win_rate = compute_win_rate(history)
+    perf_series = build_performance_series(history)
+
+    os.makedirs(DASHBOARD_DIR, exist_ok=True)
+    dashboard_html = render_dashboard(picks, commentary, win_rate, perf_series, market_data)
+    with open(DASHBOARD_FILE, "w", encoding="utf-8") as f:
+        f.write(dashboard_html)
+
+    pick_names = ", ".join(p.get("ticker", "?") for p in picks)
+    subject = f"Investment Advisory - {date.today().strftime('%d.%m.%Y')}: {pick_names}"
     body = (
-        f"MARKTKOMMENTAR\n{commentary}\n\n"
-        f"TOP {TOP_N} HEUTE (je ca. {BUDGET_CHF/TOP_N:.0f} CHF von {BUDGET_CHF} CHF Budget)\n"
-        + "\n".join(pick_lines) +
-        f"\n\nTRACKRECORD BISHERIGER TIPPS\n{track_record}\n\n"
-        "---\nHinweis: Keine Anlageberatung. Automatisiert generierte Analyse "
-        "auf Basis oeffentlicher Marktdaten, keine Kauf-/Verkaufsempfehlung."
+        f"Heutige Top {TOP_N}: {pick_names}\n\n"
+        f"{commentary}\n\n"
+        f"Volles Dashboard mit Charts, Trackrecord und S&P-500-Vergleich:\n{DASHBOARD_URL}\n\n"
+        "---\nHinweis: Keine Anlageberatung. Automatisiert generierte Analyse, keine Kauf-/Verkaufsempfehlung."
     )
 
     send_email(subject, body)
-    print("Report erfolgreich versendet.")
+    print("Report erfolgreich versendet, Dashboard aktualisiert.")
 
 
 if __name__ == "__main__":

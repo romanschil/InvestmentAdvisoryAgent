@@ -1,0 +1,19 @@
+[
+  {
+    "date": "2026-09-28",
+    "picks": [
+      {
+        "ticker": "NVDA",
+        "entry_price": 228.87
+      },
+      {
+        "ticker": "META",
+        "entry_price": 718.37
+      },
+      {
+        "ticker": "VWCE.DE",
+        "entry_price": 169.8
+      }
+    ]
+  }
+]

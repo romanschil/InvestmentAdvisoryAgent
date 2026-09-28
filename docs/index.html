@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Investment Advisory Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 900px;
+          margin: 0 auto; padding: 24px 16px; background: #0f172a; color: #e2e8f0; }
+  h1 { font-size: 1.5rem; margin-bottom: 4px; }
+  .updated { color: #94a3b8; font-size: 0.85rem; margin-bottom: 24px; }
+  .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .stat { background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 140px; }
+  .stat .label { font-size: 0.8rem; color: #94a3b8; }
+  .stat .value { font-size: 1.3rem; font-weight: 600; margin-top: 4px; }
+  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 220px; }
+  .card h3 { margin: 0 0 8px 0; color: #38bdf8; }
+  .card .price { color: #94a3b8; font-size: 0.85rem; }
+  .commentary { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; line-height: 1.5; }
+  .chart-box { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
+  .disclaimer { color: #64748b; font-size: 0.75rem; line-height: 1.4; }
+</style>
+</head>
+<body>
+  <h1>Investment Advisory Dashboard</h1>
+  <div class="updated">Letztes Update: 28.09.2026</div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="label">Budget (hypothetisch)</div><div class="value">5000 CHF</div></div>
+    <div class="stat"><div class="label">Win-Rate</div><div class="value">0 von 6 Picks im Plus (0.0%)</div></div>
+  </div>
+
+  <div class="commentary"><strong>Marktkommentar</strong><br>Der Markt präsentiert sich heute unter Druck, mit deutlichen Rückgängen bei META (-4.79%) und TSLA (-3.94%), was auf selektiven Gewinnmitnahmen oder makroökonomischen Gegenwind hindeutet. Halbleiterwerte wie NVDA und ASML zeigen relative Stärke und bestätigen die strukturelle Nachfrage im KI- und Chipsektor. Gold (GLD) verliert kurzfristig an Boden (-3.94%), bleibt aber ein möglicher Absicherungsbaustein bei erhöhter Volatilität. Für ein ausgewogenes Profil empfiehlt sich ein Fokus auf qualitativ starke Wachstumstitel mit solider Marktstellung.</div>
+
+  <h2>Top 3 heute</h2>
+  <div class="cards"><div class="card">
+              <h3>NVDA</h3>
+              <p class="price">Kurs heute: 228.86</p>
+              <p>NVDA zeigt als einziger Technologietitel heute positive Tagesperformance (+1.68%) und weist eine solide Monatsentwicklung (+3.78%) auf. Die anhaltende KI-Nachfrage stützt den mittelfristigen Ausblick.</p>
+            </div><div class="card">
+              <h3>ASML</h3>
+              <p class="price">Kurs heute: 1771.41</p>
+              <p>ASML notiert ebenfalls im Plus (+1.58% heute, +4.45% im Monat) und profitiert als Monopolist im EUV-Lithografiebereich strukturell vom globalen Halbleiterzyklus. Attraktiv für mittel- bis langfristige Anleger.</p>
+            </div><div class="card">
+              <h3>GOOGL</h3>
+              <p class="price">Kurs heute: 342.75</p>
+              <p>GOOGL zeigt mit nur -0.34% eine vergleichsweise geringe Tageskorrektur und solide Monatsentwicklung (+1.07%). Die Bewertung erscheint im Megacap-Vergleich moderat, mit starkem Cash-Flow und wachsendem Cloud-Geschäft.</p>
+            </div></div>
+
+  <div class="chart-box">
+    <h2>Performance vs. S&amp;P 500</h2>
+    <canvas id="perfChart" height="260"></canvas>
+  </div>
+
+  <p class="disclaimer">
+    Keine Anlageberatung. Automatisiert generierte Analyse auf Basis oeffentlicher
+    Marktdaten. Die Performance-Kurve ist eine Simulation (hypothetischer Kauf zu
+    Empfehlungskurs, gleich gewichtet, keine Gebuehren/Steuern beruecksichtigt) und
+    keine Garantie fuer zukuenftige Ergebnisse.
+  </p>
+
+<script>
+  const labels = ["2026-09-28"];
+  const portfolio = [9986.87];
+  const benchmark = [10000.0];
+  const invested = [10000.0];
+
+  new Chart(document.getElementById('perfChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Agent-Portfolio', data: portfolio, borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
+        { label: 'S&P 500 (gleiche Einzahlungen)', data: benchmark, borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
+        { label: 'Eingezahlt', data: invested, borderColor: '#64748b', borderDash: [4,4], tension: 0, pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 8 } },
+        y: { ticks: { color: '#94a3b8' } }
+      },
+      plugins: { legend: { labels: { color: '#e2e8f0' } } }
+    }
+  });
+</script>
+</body>
+</html>

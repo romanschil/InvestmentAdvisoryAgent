@@ -15,5 +15,22 @@
         "entry_price": 169.8
       }
     ]
+  },
+  {
+    "date": "2026-09-28",
+    "picks": [
+      {
+        "ticker": "NVDA",
+        "entry_price": 228.86
+      },
+      {
+        "ticker": "ASML",
+        "entry_price": 1771.41
+      },
+      {
+        "ticker": "GOOGL",
+        "entry_price": 342.75
+      }
+    ]
   }
 ]

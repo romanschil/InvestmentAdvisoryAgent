@@ -3,7 +3,7 @@ name: Daily Investment Report
 on:
   schedule:
     - cron: "0 6 * * *"   # 06:00 UTC = 07:00/08:00 CH-Zeit je nach Sommer-/Winterzeit
-  workflow_dispatch:        # erlaubt manuellen Testlauf per Knopfdruck
+  workflow_dispatch:        # erlaubt manuellen Testlauf per Knopfdruck 
 
 permissions:
   contents: write

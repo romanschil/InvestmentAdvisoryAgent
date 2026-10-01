@@ -66,5 +66,22 @@
         "entry_price": 227.21
       }
     ]
+  },
+  {
+    "date": "2026-10-01",
+    "picks": [
+      {
+        "ticker": "META",
+        "entry_price": 725.18
+      },
+      {
+        "ticker": "NVDA",
+        "entry_price": 228.38
+      },
+      {
+        "ticker": "GOOGL",
+        "entry_price": 344.08
+      }
+    ]
   }
 ]

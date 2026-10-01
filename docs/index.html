@@ -26,28 +26,28 @@
 </head>
 <body>
   <h1>Investment Advisory Dashboard</h1>
-  <div class="updated">Letztes Update: 30.09.2026</div>
+  <div class="updated">Letztes Update: 01.10.2026</div>
 
   <div class="stat-row">
     <div class="stat"><div class="label">Budget (hypothetisch)</div><div class="value">5000 CHF</div></div>
-    <div class="stat"><div class="label">Win-Rate</div><div class="value">3 von 12 Picks im Plus (25.0%)</div></div>
+    <div class="stat"><div class="label">Win-Rate</div><div class="value">5 von 15 Picks im Plus (33.3%)</div></div>
   </div>
 
-  <div class="commentary"><strong>Marktkommentar</strong><br>Tech- und Halbleiterwerte dominieren aktuell die Gewinnerliste, angeführt von META und ASML mit kräftigen Monatszuwächsen. Gold (GLD) zeigt trotz jüngster Schwäche im Monatschart eine Erholung heute, was auf Unsicherheiten im Markt hindeutet. AAPL und AMZN stehen kurzfristig unter Druck. VWCE.DE liefert keine verwertbaren Daten und wird daher nicht berücksichtigt.</div>
+  <div class="commentary"><strong>Marktkommentar</strong><br>Die US-Technologiemärkte zeigen insgesamt eine solide Erholung mit breiter Monatsperformance im positiven Bereich. META sticht als klarer Ausreisser nach oben hervor, während defensive Werte wie Gold und Schweizer Aktien (Nestlé, Novartis) unter Druck stehen. VWCE.DE liefert keine verwertbaren Kursdaten und bleibt vorerst nicht investierbar. Das Marktumfeld begünstigt selektiv Technologietitel mit KI-Exponierung gegenüber defensiven Segmenten.</div>
 
   <h2>Top 3 heute</h2>
   <div class="cards"><div class="card">
               <h3>META</h3>
-              <p class="price">Kurs heute: 738.79</p>
-              <p>META zeigt mit +29.18% im Monat eine aussergewöhnlich starke Momentum-Performance und bestätigt diese Stärke mit einem Tagesgewinn von +3.24%. Die Aktie bleibt im bisherigen Track Record positiv und signalisiert anhaltende Nachfrage.</p>
-            </div><div class="card">
-              <h3>ASML</h3>
-              <p class="price">Kurs heute: 1834.39</p>
-              <p>ASML verzeichnet +8.16% im Monat und +3.56% am heutigen Tag – ein starkes kombiniertes Signal. Als führender Halbleiterausrüster profitiert das Unternehmen strukturell vom globalen Chipbedarf und hat sich im Track Record ebenfalls positiv entwickelt.</p>
+              <p class="price">Kurs heute: 725.18</p>
+              <p>META zeigt mit +25.45% im Monatsvergleich die stärkste relative Stärke im gesamten Universum. Trotz des heutigen Rücksetzers von -1.84% bleibt der mittelfristige Aufwärtstrend intakt und bietet einen möglichen Einstiegspunkt nach kurzfristiger Konsolidierung.</p>
             </div><div class="card">
               <h3>NVDA</h3>
-              <p class="price">Kurs heute: 227.21</p>
-              <p>NVDA weist mit +3.03% im Monat eine solide mittelfristige Performance auf und ist trotz marginalem Tagesverlust fundamental im KI-Wachstumsbereich gut positioniert. Als Ergänzung zu ASML bietet NVDA eine sinnvolle Diversifikation innerhalb des Halbleitersektors.</p>
+              <p class="price">Kurs heute: 228.38</p>
+              <p>NVDA verzeichnet ein solides Monatsplus von +5.15% und zeigt sich mit moderater Tagesschwankung stabil. Als führender KI-Chip-Anbieter bleibt die strukturelle Wachstumsperspektive für den mittelfristigen Horizont überzeugend.</p>
+            </div><div class="card">
+              <h3>GOOGL</h3>
+              <p class="price">Kurs heute: 344.08</p>
+              <p>GOOGL kombiniert ein ordentliches Monatsplus von +2.77% mit einer positiven Tagesperformance von +0.93% und weist ein attraktives Kurs-Gewinn-Niveau im Vergleich zu anderen Mega-Caps auf. Die Diversifikation in Cloud und KI stützt den mittelfristigen Ausblick.</p>
             </div></div>
 
   <div class="chart-box">
@@ -63,10 +63,10 @@
   </p>
 
 <script>
-  const labels = ["2026-09-28", "2026-09-29"];
-  const portfolio = [9986.87, 15069.87];
-  const benchmark = [10000.0, 14983.28];
-  const invested = [10000.0, 15000.0];
+  const labels = ["2026-09-28", "2026-09-29", "2026-09-30"];
+  const portfolio = [9986.87, 15072.62, 20014.28];
+  const benchmark = [10000.0, 14983.28, 19945.58];
+  const invested = [10000.0, 15000.0, 20000.0];
 
   new Chart(document.getElementById('perfChart'), {
     type: 'line',

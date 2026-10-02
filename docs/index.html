@@ -26,28 +26,28 @@
 </head>
 <body>
   <h1>Investment Advisory Dashboard</h1>
-  <div class="updated">Letztes Update: 01.10.2026</div>
+  <div class="updated">Letztes Update: 02.10.2026</div>
 
   <div class="stat-row">
     <div class="stat"><div class="label">Budget (hypothetisch)</div><div class="value">5000 CHF</div></div>
-    <div class="stat"><div class="label">Win-Rate</div><div class="value">5 von 15 Picks im Plus (33.3%)</div></div>
+    <div class="stat"><div class="label">Win-Rate</div><div class="value">9 von 18 Picks im Plus (50.0%)</div></div>
   </div>
 
-  <div class="commentary"><strong>Marktkommentar</strong><br>Die US-Technologiemärkte zeigen insgesamt eine solide Erholung mit breiter Monatsperformance im positiven Bereich. META sticht als klarer Ausreisser nach oben hervor, während defensive Werte wie Gold und Schweizer Aktien (Nestlé, Novartis) unter Druck stehen. VWCE.DE liefert keine verwertbaren Kursdaten und bleibt vorerst nicht investierbar. Das Marktumfeld begünstigt selektiv Technologietitel mit KI-Exponierung gegenüber defensiven Segmenten.</div>
+  <div class="commentary"><strong>Marktkommentar</strong><br>Der Technologiesektor zeigt eine zweigeteilte Dynamik: KI-nahe Werte wie NVDA und META performen deutlich überdurchschnittlich, während defensivere Namen wie GOOGL und AAPL unter Druck stehen. Gold (GLD) korrigiert trotz seiner Funktion als sicherer Hafen spürbar (-4.97% im Monat), was auf eine Risk-on-Stimmung hindeutet. Für ein mittelfristiges, ausgewogenes Portfolio empfiehlt sich ein Fokus auf Qualitätstitel mit KI-Exposure bei gleichzeitiger Diversifikation über Sektoren hinweg.</div>
 
   <h2>Top 3 heute</h2>
   <div class="cards"><div class="card">
               <h3>META</h3>
-              <p class="price">Kurs heute: 725.18</p>
-              <p>META zeigt mit +25.45% im Monatsvergleich die stärkste relative Stärke im gesamten Universum. Trotz des heutigen Rücksetzers von -1.84% bleibt der mittelfristige Aufwärtstrend intakt und bietet einen möglichen Einstiegspunkt nach kurzfristiger Konsolidierung.</p>
+              <p class="price">Kurs heute: 725.93</p>
+              <p>META zeigt mit +22.54% im Monatsvergleich die stärkste relative Stärke im gesamten Universum und bestätigt den Aufwärtstrend. Der Tagesperformance von +0.10% deutet auf Stabilisierung nach dem starken Anstieg hin.</p>
             </div><div class="card">
               <h3>NVDA</h3>
-              <p class="price">Kurs heute: 228.38</p>
-              <p>NVDA verzeichnet ein solides Monatsplus von +5.15% und zeigt sich mit moderater Tagesschwankung stabil. Als führender KI-Chip-Anbieter bleibt die strukturelle Wachstumsperspektive für den mittelfristigen Horizont überzeugend.</p>
+              <p class="price">Kurs heute: 230.86</p>
+              <p>NVDA überzeugt mit +1.09% auf Tagesbasis und soliden +2.99% im Monat; die KI-Nachfrage stützt den Kurs strukturell und der Titel hat im bisherigen Trackrecord konsistent positive Renditen geliefert.</p>
             </div><div class="card">
-              <h3>GOOGL</h3>
-              <p class="price">Kurs heute: 344.08</p>
-              <p>GOOGL kombiniert ein ordentliches Monatsplus von +2.77% mit einer positiven Tagesperformance von +0.93% und weist ein attraktives Kurs-Gewinn-Niveau im Vergleich zu anderen Mega-Caps auf. Die Diversifikation in Cloud und KI stützt den mittelfristigen Ausblick.</p>
+              <h3>MSFT</h3>
+              <p class="price">Kurs heute: 512.8</p>
+              <p>MSFT kombiniert relative Stabilität (nahezu unverändert auf Tagesbasis) mit einem soliden Monatsplus von +3.22%, was für ein ausgewogenes Profil gut geeignet ist und fundamentale Stärke widerspiegelt.</p>
             </div></div>
 
   <div class="chart-box">
@@ -63,10 +63,10 @@
   </p>
 
 <script>
-  const labels = ["2026-09-28", "2026-09-29", "2026-09-30"];
-  const portfolio = [9986.87, 15072.62, 20014.28];
-  const benchmark = [10000.0, 14983.28, 19945.58];
-  const invested = [10000.0, 15000.0, 20000.0];
+  const labels = ["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"];
+  const portfolio = [9986.87, 15072.62, 20018.01, 25034.78];
+  const benchmark = [10000.0, 14983.28, 19945.58, 24984.45];
+  const invested = [10000.0, 15000.0, 20000.0, 25000.0];
 
   new Chart(document.getElementById('perfChart'), {
     type: 'line',

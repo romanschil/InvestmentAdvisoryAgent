@@ -1,0 +1,90 @@
+{
+  "start_date": "2026-10-02",
+  "cash_chf": -0.0,
+  "positions": [
+    {
+      "ticker": "GOOGL",
+      "isin": "US02079K3059",
+      "name": "Alphabet Inc. (A)",
+      "currency": "USD",
+      "shares": 5.956443,
+      "buy_price_native": 338.24,
+      "buy_price_chf": 279.809,
+      "buy_date": "2026-10-02",
+      "rationale": "Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung.",
+      "current_value_chf": 1666.67,
+      "profit_chf": 0.0,
+      "profit_pct": 0.0
+    },
+    {
+      "ticker": "NVDA",
+      "isin": "US67066G1040",
+      "name": "NVIDIA Corp.",
+      "currency": "USD",
+      "shares": 8.726966,
+      "buy_price_native": 230.86,
+      "buy_price_chf": 190.9789,
+      "buy_date": "2026-10-02",
+      "rationale": "NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad.",
+      "current_value_chf": 1666.67,
+      "profit_chf": 0.0,
+      "profit_pct": 0.0
+    },
+    {
+      "ticker": "VWCE.DE",
+      "isin": "IE00BK5BQT80",
+      "name": "Vanguard FTSE All-World ETF",
+      "currency": "EUR",
+      "shares": 10.42217,
+      "buy_price_native": 171.62,
+      "buy_price_chf": 159.9155,
+      "buy_date": "2026-10-02",
+      "rationale": "Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko.",
+      "current_value_chf": 1666.67,
+      "profit_chf": 0.0,
+      "profit_pct": 0.0
+    }
+  ],
+  "transactions": [
+    {
+      "date": "2026-10-02",
+      "action": "buy",
+      "ticker": "GOOGL",
+      "isin": "US02079K3059",
+      "name": "Alphabet Inc. (A)",
+      "shares": 5.956443,
+      "price_chf": 279.81,
+      "rationale": "Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung."
+    },
+    {
+      "date": "2026-10-02",
+      "action": "buy",
+      "ticker": "NVDA",
+      "isin": "US67066G1040",
+      "name": "NVIDIA Corp.",
+      "shares": 8.726966,
+      "price_chf": 190.98,
+      "rationale": "NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad."
+    },
+    {
+      "date": "2026-10-02",
+      "action": "buy",
+      "ticker": "VWCE.DE",
+      "isin": "IE00BK5BQT80",
+      "name": "Vanguard FTSE All-World ETF",
+      "shares": 10.42217,
+      "price_chf": 159.92,
+      "rationale": "Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko."
+    }
+  ],
+  "value_history": [
+    {
+      "date": "2026-10-02",
+      "portfolio_chf": 5000.01,
+      "SMI": null,
+      "S&P 500": null,
+      "NASDAQ": null,
+      "Sparkonto": 5000.0
+    }
+  ]
+}

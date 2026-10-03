@@ -32,40 +32,37 @@
 </head>
 <body>
   <h1>Investment Advisory Dashboard</h1>
-  <div class="updated">Letztes Update: 02.10.2026 | Start: 2026-10-02</div>
+  <div class="updated">Letztes Update: 03.10.2026 | Start: 2026-10-02</div>
 
   <div class="stat-row">
-    <div class="stat"><div class="label">Portfolio-Wert</div><div class="value">5000.01 CHF</div></div>
-    <div class="stat"><div class="label">Gewinn/Verlust</div><div class="value">+0.01 CHF (+0.00%)</div></div>
+    <div class="stat"><div class="label">Portfolio-Wert</div><div class="value">nan CHF</div></div>
+    <div class="stat"><div class="label">Gewinn/Verlust</div><div class="value">+nan CHF (+nan%)</div></div>
     <div class="stat"><div class="label">Cash (nicht investiert)</div><div class="value">-0.00 CHF</div></div>
   </div>
 
-  <div class="commentary">
-          <strong>Heutige Aktionen</strong>
-          <ul><li>GOOGL (US02079K3059, Alphabet Inc. (A)): neu gekauft</li><li>NVDA (US67066G1040, NVIDIA Corp.): neu gekauft</li><li>VWCE.DE (IE00BK5BQT80, Vanguard FTSE All-World ETF): neu gekauft</li></ul>
-        </div>
+  
 
   <h2>Aktuelle Positionen</h2>
   <div class="cards">
         <div class="card">
           <h3>GOOGL <span class="isin">US02079K3059</span></h3>
           <p class="name">Alphabet Inc. (A)</p>
-          <p>Wert: 1666.67 CHF
-             (+0.00%)</p>
+          <p>Wert: 1695.1 CHF
+             (+1.71%)</p>
           <p class="rationale">Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung.</p>
         </div>
         <div class="card">
           <h3>NVDA <span class="isin">US67066G1040</span></h3>
           <p class="name">NVIDIA Corp.</p>
-          <p>Wert: 1666.67 CHF
-             (+0.00%)</p>
+          <p>Wert: 1691.49 CHF
+             (+1.49%)</p>
           <p class="rationale">NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad.</p>
         </div>
         <div class="card">
           <h3>VWCE.DE <span class="isin">IE00BK5BQT80</span></h3>
           <p class="name">Vanguard FTSE All-World ETF</p>
-          <p>Wert: 1666.67 CHF
-             (+0.00%)</p>
+          <p>Wert: nan CHF
+             (+nan%)</p>
           <p class="rationale">Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko.</p>
         </div></div>
 
@@ -76,7 +73,7 @@
 
   <div class="chart-box">
     <h2>Aktueller Vergleich (hypothetisch, 5000 CHF seit 2026-10-02)</h2>
-    <table><tr><th>Anlage</th><th>Wert heute</th></tr><tr><td>SMI</td><td>n/a CHF</td></tr><tr><td>S&P 500</td><td>n/a CHF</td></tr><tr><td>NASDAQ</td><td>n/a CHF</td></tr><tr><td>Sparkonto</td><td>5000.0 CHF</td></tr></table>
+    <table><tr><th>Anlage</th><th>Wert heute</th></tr><tr><td>SMI</td><td>n/a CHF</td></tr><tr><td>S&P 500</td><td>n/a CHF</td></tr><tr><td>NASDAQ</td><td>n/a CHF</td></tr><tr><td>Sparkonto</td><td>5000.1 CHF</td></tr></table>
   </div>
 
   <div class="chart-box table-wrap">
@@ -113,13 +110,13 @@
   new Chart(document.getElementById('perfChart'), {
     type: 'line',
     data: {
-      labels: ["2026-10-02"],
+      labels: ["2026-10-02", "2026-10-03"],
       datasets: [
-        { label: 'Portfolio', data: [5000.01], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
-        { label: 'SMI', data: [null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
-        { label: 'S&P 500', data: [null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
-        { label: 'NASDAQ', data: [null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
-        { label: 'Sparkonto', data: [5000.0], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
+        { label: 'Portfolio', data: [5000.01, NaN], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
+        { label: 'SMI', data: [null, null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
+        { label: 'S&P 500', data: [null, null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
+        { label: 'NASDAQ', data: [null, null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
+        { label: 'Sparkonto', data: [5000.0, 5000.1], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
       ]
     },
     options: {

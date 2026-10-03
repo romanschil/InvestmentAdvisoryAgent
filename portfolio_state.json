@@ -12,9 +12,9 @@
       "buy_price_chf": 279.809,
       "buy_date": "2026-10-02",
       "rationale": "Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung.",
-      "current_value_chf": 1666.67,
-      "profit_chf": 0.0,
-      "profit_pct": 0.0
+      "current_value_chf": 1695.1,
+      "profit_chf": 28.44,
+      "profit_pct": 1.71
     },
     {
       "ticker": "NVDA",
@@ -26,9 +26,9 @@
       "buy_price_chf": 190.9789,
       "buy_date": "2026-10-02",
       "rationale": "NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad.",
-      "current_value_chf": 1666.67,
-      "profit_chf": 0.0,
-      "profit_pct": 0.0
+      "current_value_chf": 1691.49,
+      "profit_chf": 24.82,
+      "profit_pct": 1.49
     },
     {
       "ticker": "VWCE.DE",
@@ -40,9 +40,9 @@
       "buy_price_chf": 159.9155,
       "buy_date": "2026-10-02",
       "rationale": "Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko.",
-      "current_value_chf": 1666.67,
-      "profit_chf": 0.0,
-      "profit_pct": 0.0
+      "current_value_chf": NaN,
+      "profit_chf": NaN,
+      "profit_pct": NaN
     }
   ],
   "transactions": [
@@ -85,6 +85,14 @@
       "S&P 500": null,
       "NASDAQ": null,
       "Sparkonto": 5000.0
+    },
+    {
+      "date": "2026-10-03",
+      "portfolio_chf": NaN,
+      "SMI": null,
+      "S&P 500": null,
+      "NASDAQ": null,
+      "Sparkonto": 5000.1
     }
   ]
 }

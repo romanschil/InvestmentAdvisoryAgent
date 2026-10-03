@@ -15,12 +15,6 @@
   .stat { background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 140px; }
   .stat .label { font-size: 0.8rem; color: #94a3b8; }
   .stat .value { font-size: 1.3rem; font-weight: 600; margin-top: 4px; }
-  .cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
-  .card { background: #1e293b; border-radius: 12px; padding: 16px; flex: 1; min-width: 220px; }
-  .card h3 { margin: 0 0 4px 0; color: #38bdf8; }
-  .card .isin { color: #64748b; font-size: 0.75rem; font-weight: normal; }
-  .card .name { color: #94a3b8; font-size: 0.85rem; margin: 0 0 8px 0; }
-  .card .rationale { font-size: 0.85rem; color: #cbd5e1; }
   .commentary { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; line-height: 1.5; }
   .chart-box { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
@@ -47,32 +41,13 @@
         </div>
   
 
-  <h2>Aktuelle Positionen</h2>
-  <div class="cards">
-        <div class="card">
-          <h3>GOOGL <span class="isin">US02079K3059</span></h3>
-          <p class="name">Alphabet Inc. (A) (stock)</p>
-          <p>Stueck: 5.9564</p>
-          <p>Wert: 1695.1 CHF
-             (+1.71%)</p>
-          <p class="rationale">Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung.</p>
-        </div>
-        <div class="card">
-          <h3>NVDA <span class="isin">US67066G1040</span></h3>
-          <p class="name">NVIDIA Corp. (stock)</p>
-          <p>Stueck: 8.7270</p>
-          <p>Wert: 1691.49 CHF
-             (+1.49%)</p>
-          <p class="rationale">NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad.</p>
-        </div>
-        <div class="card">
-          <h3>VWCE.DE <span class="isin">IE00BK5BQT80</span></h3>
-          <p class="name">Vanguard FTSE All-World ETF (stock)</p>
-          <p>Stueck: 10.4222</p>
-          <p>Wert: nan CHF
-             (+nan%)</p>
-          <p class="rationale">Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko.</p>
-        </div></div>
+  <div class="chart-box table-wrap">
+    <h2>Aktuelle Positionen</h2>
+    <table>
+      <tr><th>Titel Name</th><th>ISIN</th><th>Valor</th><th>Stueckzahl</th><th>Wert</th><th>Gewinn/Verlust</th></tr>
+      <tr><td style='padding:6px 10px;border-bottom:1px solid #334155;'>Alphabet Inc. (A)</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>US02079K3059</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>–</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>5.9564</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>1695.1 CHF</td><td style='padding:6px 10px;border-bottom:1px solid #334155;color:#16a34a;'>+28.44 CHF (+1.71%)</td></tr><tr><td style='padding:6px 10px;border-bottom:1px solid #334155;'>NVIDIA Corp.</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>US67066G1040</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>–</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>8.7270</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>1691.49 CHF</td><td style='padding:6px 10px;border-bottom:1px solid #334155;color:#16a34a;'>+24.82 CHF (+1.49%)</td></tr><tr><td style='padding:6px 10px;border-bottom:1px solid #334155;'>Vanguard FTSE All-World ETF</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>IE00BK5BQT80</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>–</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>10.4222</td><td style='padding:6px 10px;border-bottom:1px solid #334155;'>nan CHF</td><td style='padding:6px 10px;border-bottom:1px solid #334155;color:#dc2626;'>+nan CHF (+nan%)</td></tr>
+    </table>
+  </div>
 
   <div class="chart-box">
     <h2>Portfolio vs. Indizes &amp; Sparkonto</h2>
@@ -87,8 +62,8 @@
   <div class="chart-box table-wrap">
     <h2>Transaktions-Historie</h2>
     <table>
-      <tr><th>Datum</th><th>Aktion</th><th>Ticker</th><th>ISIN</th><th>Name</th><th>Klasse</th><th>Stueck</th><th>Gebuehren CHF</th><th>Gewinn CHF</th><th>Gewinn %</th></tr>
-      <tr><td>2026-10-02</td><td>BUY</td><td>VWCE.DE</td><td>IE00BK5BQT80</td><td>Vanguard FTSE All-World ETF</td><td>stock</td><td>10.4222</td><td>-</td><td>-</td><td>-</td></tr><tr><td>2026-10-02</td><td>BUY</td><td>NVDA</td><td>US67066G1040</td><td>NVIDIA Corp.</td><td>stock</td><td>8.7270</td><td>-</td><td>-</td><td>-</td></tr><tr><td>2026-10-02</td><td>BUY</td><td>GOOGL</td><td>US02079K3059</td><td>Alphabet Inc. (A)</td><td>stock</td><td>5.9564</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><th>Datum</th><th>Aktion</th><th>Ticker</th><th>ISIN</th><th>Valor</th><th>Name</th><th>Klasse</th><th>Stueck</th><th>Gebuehren CHF</th><th>Gewinn CHF</th><th>Gewinn %</th></tr>
+      <tr><td>2026-10-02</td><td>BUY</td><td>VWCE.DE</td><td>IE00BK5BQT80</td><td>–</td><td>Vanguard FTSE All-World ETF</td><td>stock</td><td>10.4222</td><td>-</td><td>-</td><td>-</td></tr><tr><td>2026-10-02</td><td>BUY</td><td>NVDA</td><td>US67066G1040</td><td>–</td><td>NVIDIA Corp.</td><td>stock</td><td>8.7270</td><td>-</td><td>-</td><td>-</td></tr><tr><td>2026-10-02</td><td>BUY</td><td>GOOGL</td><td>US02079K3059</td><td>–</td><td>Alphabet Inc. (A)</td><td>stock</td><td>5.9564</td><td>-</td><td>-</td><td>-</td></tr>
     </table>
   </div>
 
@@ -97,21 +72,21 @@
     Marktdaten. Index-Vergleiche sind reine Preis-Renditen (ohne Dividenden,
     ohne FX-Effekte bei Fremdwaehrungs-Indizes). Courtage-, Krypto- und FX-
     Gebuehren sind Swissquote-Richtwerte (Stand 2026); die quartalsweise
-    Depotgebuehr ist nicht eingerechnet. ISINs nach bestem Wissen hinterlegt,
-    vor echten Entscheidungen selbst verifizieren.
+    Depotgebuehr ist nicht eingerechnet. ISIN/Valor nach bestem Wissen
+    hinterlegt, vor echten Entscheidungen selbst verifizieren.
   </p>
 
 <script>
   new Chart(document.getElementById('perfChart'), {
     type: 'line',
     data: {
-      labels: ["2026-10-02", "2026-10-03", "2026-10-03"],
+      labels: ["2026-10-02", "2026-10-03", "2026-10-03", "2026-10-03"],
       datasets: [
-        { label: 'Portfolio', data: [5000.01, NaN, NaN], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
-        { label: 'SMI', data: [null, null, null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
-        { label: 'S&P 500', data: [null, null, null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
-        { label: 'NASDAQ', data: [null, null, null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
-        { label: 'Sparkonto', data: [5000.0, 5000.1, 5000.1], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
+        { label: 'Portfolio', data: [5000.01, NaN, NaN, NaN], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
+        { label: 'SMI', data: [null, null, null, null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
+        { label: 'S&P 500', data: [null, null, null, null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
+        { label: 'NASDAQ', data: [null, null, null, null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
+        { label: 'Sparkonto', data: [5000.0, 5000.1, 5000.1, 5000.1], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
       ]
     },
     options: {

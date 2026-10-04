@@ -117,6 +117,14 @@
       "S&P 500": null,
       "NASDAQ": null,
       "Sparkonto": 5000.21
+    },
+    {
+      "date": "2026-10-04",
+      "portfolio_chf": NaN,
+      "SMI": null,
+      "S&P 500": null,
+      "NASDAQ": null,
+      "Sparkonto": 5000.21
     }
   ]
 }

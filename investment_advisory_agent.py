@@ -26,6 +26,7 @@ Entscheidungen selbst verifizieren.
 
 import os
 import json
+import math
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -120,17 +121,31 @@ def fmt_shares(v):
     return f"{v:.4f}" if isinstance(v, (int, float)) else "-"
 
 
+def safe_value(v) -> float:
+    """Gibt v zurueck, ausser es ist None oder NaN -- dann 0.0.
+    (NaN ist in Python truthy, daher reicht ein simples 'or 0' nicht aus.)"""
+    if v is None:
+        return 0.0
+    if isinstance(v, float) and math.isnan(v):
+        return 0.0
+    return v
+
+
 # ---------------------------------------------------------------------------
 # MARKTDATEN / FX
 # ---------------------------------------------------------------------------
 
 def fetch_prices(tickers: list[str]) -> dict:
+    """Letzter gueltiger Schlusskurs je Ticker. Faellt der heutige Kurs aus
+    (NaN, z.B. weil der Titel an diesem Tag nicht gehandelt wurde), wird auf
+    den juengsten gueltigen Kurs der letzten 10 Tage zurueckgefallen."""
     prices = {}
     for ticker in sorted(set(tickers)):
         try:
-            hist = yf.Ticker(ticker).history(period="5d")
-            if not hist.empty:
-                prices[ticker] = float(hist["Close"].iloc[-1])
+            hist = yf.Ticker(ticker).history(period="10d")
+            closes = hist["Close"].dropna()
+            if not closes.empty:
+                prices[ticker] = float(closes.iloc[-1])
         except Exception:
             pass
     return prices
@@ -141,8 +156,9 @@ def fetch_fx_rates() -> dict:
     pairs = {"USD": "USDCHF=X", "EUR": "EURCHF=X"}
     for cur, pair in pairs.items():
         try:
-            hist = yf.Ticker(pair).history(period="5d")
-            rates[cur] = float(hist["Close"].iloc[-1]) if not hist.empty else None
+            hist = yf.Ticker(pair).history(period="10d")
+            closes = hist["Close"].dropna()
+            rates[cur] = float(closes.iloc[-1]) if not closes.empty else None
         except Exception:
             rates[cur] = None
     return rates
@@ -174,7 +190,12 @@ def load_state() -> dict:
             "value_history": [],
         }
     with open(STATE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        state = json.load(f)
+    for pos in state.get("positions", []):
+        for key in ("current_value_chf", "profit_chf", "profit_pct"):
+            if isinstance(pos.get(key), float) and math.isnan(pos[key]):
+                pos[key] = None
+    return state
 
 
 def save_state(state: dict):
@@ -243,7 +264,9 @@ def mark_to_market(state: dict, prices: dict, fx: dict, allowed_classes: set):
             continue
         price_native = prices.get(pos["ticker"])
         rate = fx.get(pos["currency"], 1.0)
-        if price_native is not None and rate is not None:
+        valid_price = price_native is not None and not math.isnan(price_native)
+        valid_rate = rate is not None and not math.isnan(rate)
+        if valid_price and valid_rate:
             value_chf = pos["shares"] * price_native * rate
             buy_value_chf = pos.get("cost_basis_chf", pos["shares"] * pos["buy_price_chf"])
             pos["current_value_chf"] = round(value_chf, 2)
@@ -675,7 +698,7 @@ def main():
     today_actions = process_sells_and_buys(state, universe_prices, fx, allowed_classes)
     mark_to_market(state, universe_prices, fx, allowed_classes)
 
-    portfolio_total = state["cash_chf"] + sum(p.get("current_value_chf") or 0 for p in state["positions"])
+    portfolio_total = state["cash_chf"] + sum(safe_value(p.get("current_value_chf")) for p in state["positions"])
     benchmarks = compute_benchmarks(state["start_date"])
 
     state["value_history"].append({

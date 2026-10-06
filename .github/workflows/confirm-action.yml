@@ -1,0 +1,43 @@
+name: Confirm Portfolio Action
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  confirm:
+    if: startsWith(github.event.issue.title, 'CONFIRM:')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Aktion ausfuehren
+        id: run
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: python confirm_action.py | tee result.txt
+      - name: Aenderungen committen
+        run: |
+          git config user.name "advisory-bot"
+          git config user.email "bot@example.com"
+          git add portfolio_state.json docs/index.html
+          git diff --staged --quiet || git commit -m "confirm: ${{ github.event.issue.title }}"
+          git pull --rebase origin main
+          git push
+      - name: Issue kommentieren und schliessen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESULT=$(cat result.txt)
+          gh issue comment ${{ github.event.issue.number }} --body "Verarbeitet:
+          \`\`\`
+          $RESULT
+          \`\`\`"
+          gh issue close ${{ github.event.issue.number }}

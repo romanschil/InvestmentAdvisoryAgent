@@ -1,33 +1,28 @@
 """
-Taeglicher Investment Advisory Agent -- Portfolio-Modus (Aktien + Krypto, Swissquote-Kosten)
-=============================================================================================
-Haelt ein fiktives Portfolio in CHF (Start: BUDGET_CHF), investiert gleich
-gewichtet in TOP_N Titel aus einem kuratierten, einfachen Anlageuniversum
-(Aktien/ETFs + 5 grosse Kryptowaehrungen -- keine Hebelprodukte, keine
-strukturierten Produkte, keine Derivate, keine Nischen-Coins).
+Taeglicher Investment Advisory Agent -- Portfolio-Modus mit Bestaetigung
+=============================================================================
+Haelt ein fiktives Portfolio in CHF. Erreicht eine Position seit Kauf
+>= SELL_THRESHOLD_PCT Gewinn, wird NICHT automatisch verkauft -- stattdessen
+erzeugt der Agent einen VORSCHLAG (Verkauf + Nachkauf-Idee), sichtbar im
+Dashboard und in der Mail, jeweils mit einem "Quittieren"-Link. Erst wenn
+der Link angeklickt und das vorausgefuellte GitHub-Issue abgeschickt wird,
+fuehrt ein zweiter Workflow (confirm_action.py) die Aktion wirklich aus.
+Ohne Quittierung bleibt die Position unveraendert im Portfolio, es wird
+nichts verkauft und nichts Neues gekauft.
 
-Pro Position einzeln: sobald eine Position seit Kauf >= SELL_THRESHOLD_PCT
-im Plus liegt, wird NUR DIESE Position fiktiv verkauft (abzgl. Gebuehren),
-der Gewinn verbucht, und mit dem freien Cash sofort ein neuer Pick (via
-Claude) nachgekauft. Andere Positionen bleiben unberuehrt.
+Wochenende (Sa/So): nur Krypto-Positionen werden bewertet/vorgeschlagen,
+Aktien/ETFs bleiben auf dem Freitags-Stand eingefroren.
 
-Wochenende (Sa/So): Aktien-/ETF-Boersen sind geschlossen -- diese Positionen
-bleiben exakt auf dem Freitags-Stand eingefroren. Nur Krypto-Positionen
-(24/7 handelbar) werden bewertet, auf die Verkaufsregel geprueft und bei
-Bedarf gehandelt (Ersatzkauf dann ebenfalls nur aus dem Krypto-Universum).
-
-E-Mail wird als formatiertes HTML (inkl. klickbarem Dashboard-Link) verschickt.
-
-WICHTIG: Dies ist KEINE Anlageberatung und kein echter Handel. Alles ist
-eine Simulation auf Basis oeffentlicher Marktdaten. ISINs/Valor/Gebuehren-
-saetze sind Richtwerte (Stand 2026, ohne Gewaehr) -- vor echten
-Entscheidungen selbst verifizieren.
+WICHTIG: Keine Anlageberatung, kein echter Handel. Simulation auf Basis
+oeffentlicher Marktdaten. ISIN/Valor/Gebuehren sind Richtwerte ohne Gewaehr.
 """
 
 import os
 import json
 import math
+import uuid
 import smtplib
+import urllib.parse
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import date
@@ -41,7 +36,7 @@ import yfinance as yf
 
 BUDGET_CHF = 5000
 TOP_N = 3
-SELL_THRESHOLD_PCT = 20.0          # pro Titel einzeln geprueft
+SELL_THRESHOLD_PCT = 20.0
 SAVINGS_ANNUAL_RATE_PCT = 0.75
 
 TRANSACTION_FEE_TIERS = [
@@ -64,10 +59,6 @@ def transaction_fee_for(order_value_native: float, asset_class: str) -> float:
     return stock_transaction_fee(order_value_native)
 
 
-# Kuratiertes Anlageuniversum -- einfache, liquide Aktien/ETFs + 5 grosse
-# Kryptowaehrungen. ISINs/Valor nach bestem Wissen hinterlegt (Valor bei
-# CH-ISINs direkt aus der ISIN abgeleitet, bei US-Titeln einzeln recherchiert)
-# -- vor Echtgeld-Nutzung selbst verifizieren.
 CANDIDATE_UNIVERSE = [
     {"ticker": "AAPL",    "isin": "US0378331005", "valor": "908440",   "name": "Apple Inc.",            "currency": "USD", "asset_class": "stock"},
     {"ticker": "MSFT",    "isin": "US5949181045", "valor": "951692",   "name": "Microsoft Corp.",       "currency": "USD", "asset_class": "stock"},
@@ -89,14 +80,12 @@ CANDIDATE_UNIVERSE = [
 ]
 UNIVERSE_BY_TICKER = {u["ticker"]: u for u in CANDIDATE_UNIVERSE}
 
-BENCHMARKS = {
-    "SMI": "^SSMI",
-    "S&P 500": "^GSPC",
-    "NASDAQ": "^IXIC",
-}
+BENCHMARKS = {"SMI": "^SSMI", "S&P 500": "^GSPC", "NASDAQ": "^IXIC"}
 
 RECIPIENT_EMAIL = "roman.schilling@bluewin.ch"
+GITHUB_REPO = "romanschil/InvestmentAdvisoryAgent"
 DASHBOARD_URL = "https://romanschil.github.io/InvestmentAdvisoryAgent/"
+ISSUE_BASE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
 
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
@@ -122,8 +111,6 @@ def fmt_shares(v):
 
 
 def safe_value(v) -> float:
-    """Gibt v zurueck, ausser es ist None oder NaN -- dann 0.0.
-    (NaN ist in Python truthy, daher reicht ein simples 'or 0' nicht aus.)"""
     if v is None:
         return 0.0
     if isinstance(v, float) and math.isnan(v):
@@ -136,9 +123,6 @@ def safe_value(v) -> float:
 # ---------------------------------------------------------------------------
 
 def fetch_prices(tickers: list[str]) -> dict:
-    """Letzter gueltiger Schlusskurs je Ticker. Faellt der heutige Kurs aus
-    (NaN, z.B. weil der Titel an diesem Tag nicht gehandelt wurde), wird auf
-    den juengsten gueltigen Kurs der letzten 10 Tage zurueckgefallen."""
     prices = {}
     for ticker in sorted(set(tickers)):
         try:
@@ -188,9 +172,11 @@ def load_state() -> dict:
             "positions": [],
             "transactions": [],
             "value_history": [],
+            "pending_actions": [],
         }
     with open(STATE_FILE, "r", encoding="utf-8") as f:
         state = json.load(f)
+    state.setdefault("pending_actions", [])
     for pos in state.get("positions", []):
         for key in ("current_value_chf", "profit_chf", "profit_pct"):
             if isinstance(pos.get(key), float) and math.isnan(pos[key]):
@@ -204,7 +190,7 @@ def save_state(state: dict):
 
 
 # ---------------------------------------------------------------------------
-# CLAUDE: NEUE PICKS AUSWAEHLEN
+# CLAUDE: NEUEN ERSATZ-PICK VORSCHLAGEN
 # ---------------------------------------------------------------------------
 
 def select_new_picks(needed: int, exclude_tickers: set, universe_prices: dict, allowed_classes: set) -> list:
@@ -214,7 +200,6 @@ def select_new_picks(needed: int, exclude_tickers: set, universe_prices: dict, a
     ]
     if not available:
         return []
-
     lines = []
     for u in available:
         p = universe_prices.get(u["ticker"])
@@ -227,8 +212,8 @@ def select_new_picks(needed: int, exclude_tickers: set, universe_prices: dict, a
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     system_prompt = f"""Du bist ein nuechterner Investment-Analyse-Assistent.
-Anlageprofil: {RISK_PROFILE}, Horizont: {HORIZON}. Es geht um einfache,
-unkomplizierte Aktien/ETFs/Kryptowaehrungen -- keine Hebelprodukte, keine Derivate.
+Anlageprofil: {RISK_PROFILE}, Horizont: {HORIZON}. Einfache, unkomplizierte
+Aktien/ETFs/Kryptowaehrungen -- keine Hebelprodukte, keine Derivate.
 
 Waehle aus dem gegebenen Universum genau {needed} Titel aus, die aus Sicht
 der Marktdaten aktuell am interessantesten erscheinen. Waehle NUR aus den
@@ -237,14 +222,11 @@ gelisteten Tickern, erfinde keine neuen.
 Antworte AUSSCHLIESSLICH mit einem JSON-Objekt, keine Einleitung, keine
 Markdown-Codebloecke. Format:
 {{"picks": [{{"ticker": "XXX", "rationale": "kurze Begruendung auf Deutsch, 1-2 Saetze"}}]}}"""
-
     user_prompt = f"Verfuegbares Anlageuniversum:\n{candidates_summary}\n\nWaehle {needed} Titel."
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=600,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        model="claude-sonnet-4-6", max_tokens=600,
+        system=system_prompt, messages=[{"role": "user", "content": user_prompt}],
     )
     text = "".join(b.text for b in response.content if b.type == "text")
     clean = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
@@ -274,99 +256,147 @@ def mark_to_market(state: dict, prices: dict, fx: dict, allowed_classes: set):
             pos["profit_pct"] = round((value_chf - buy_value_chf) / buy_value_chf * 100, 2)
 
 
-def process_sells_and_buys(state: dict, universe_prices: dict, fx: dict, allowed_classes: set) -> dict:
+def detect_pending_actions(state: dict, universe_prices: dict, allowed_classes: set):
+    """Erzeugt Verkaufs-/Nachkauf-VORSCHLAEGE fuer Positionen >= SELL_THRESHOLD_PCT.
+    Fuehrt NICHTS aus -- das passiert erst bei Quittierung via confirm_action.py.
+    Veraltete Vorschlaege (Position wieder unter der Schwelle) werden entfernt."""
     today = date.today().isoformat()
-    sold, bought = [], []
 
-    still_open = []
+    # 1) veraltete SELL-Vorschlaege entfernen, falls Position nicht mehr >= Schwelle
+    kept_sells = []
+    kept_sell_ids = set()
+    for a in state["pending_actions"]:
+        if a["type"] != "sell":
+            continue
+        pos = next((p for p in state["positions"] if p["ticker"] == a["ticker"]), None)
+        if pos and pos.get("profit_pct") is not None and pos["profit_pct"] >= SELL_THRESHOLD_PCT:
+            kept_sells.append(a)
+            kept_sell_ids.add(a["id"])
+
+    # 2) BUY-Vorschlaege behalten, wenn schon vom User quittiert ODER zugehoeriger Sell noch gueltig
+    kept_buys = [
+        a for a in state["pending_actions"]
+        if a["type"] == "buy" and (a.get("status") == "confirm_requested" or a.get("linked_sell_id") in kept_sell_ids)
+    ]
+    state["pending_actions"] = kept_sells + kept_buys
+
+    # 3) neue Vorschlaege fuer Positionen, die NEU >= Schwelle sind
+    existing_sell_tickers = {a["ticker"] for a in state["pending_actions"] if a["type"] == "sell"}
     for pos in state["positions"]:
-        eligible = pos.get("asset_class", "stock") in allowed_classes
-        if eligible and pos.get("profit_pct") is not None and pos["profit_pct"] >= SELL_THRESHOLD_PCT:
-            asset_class = pos.get("asset_class", "stock")
-            gross_value_chf = pos["current_value_chf"]
-            rate = fx.get(pos["currency"], 1.0) or 1.0
-            order_value_native = gross_value_chf / rate if pos["currency"] != "CHF" else gross_value_chf
-            fee_native = transaction_fee_for(order_value_native, asset_class)
-            fee_chf = fee_native * rate if pos["currency"] != "CHF" else fee_native
-            fx_fee_chf = gross_value_chf * FX_FEE_PCT / 100 if pos["currency"] != "CHF" else 0.0
-            total_fee_chf = fee_chf + fx_fee_chf
-            net_proceeds_chf = gross_value_chf - total_fee_chf
-            state["cash_chf"] += net_proceeds_chf
+        if pos.get("asset_class", "stock") not in allowed_classes:
+            continue
+        if pos["ticker"] in existing_sell_tickers:
+            continue
+        if pos.get("profit_pct") is None or pos["profit_pct"] < SELL_THRESHOLD_PCT:
+            continue
 
-            cost_basis = pos.get("cost_basis_chf", pos["shares"] * pos["buy_price_chf"])
-            profit_chf = net_proceeds_chf - cost_basis
-            profit_pct = profit_chf / cost_basis * 100
+        sell_id = uuid.uuid4().hex[:8]
+        state["pending_actions"].append({
+            "id": sell_id, "type": "sell", "ticker": pos["ticker"], "isin": pos["isin"],
+            "valor": pos.get("valor", "–"), "name": pos["name"],
+            "asset_class": pos.get("asset_class", "stock"), "detected_date": today,
+            "profit_pct": pos["profit_pct"], "profit_chf": pos.get("profit_chf"),
+        })
 
-            tx = {
-                "date": today, "action": "sell", "ticker": pos["ticker"],
-                "isin": pos["isin"], "valor": pos.get("valor", "–"), "name": pos["name"],
-                "asset_class": asset_class, "shares": pos["shares"],
-                "price_chf": round(gross_value_chf / pos["shares"], 2) if pos["shares"] else None,
-                "fee_chf": round(total_fee_chf, 2),
-                "profit_chf": round(profit_chf, 2), "profit_pct": round(profit_pct, 2),
-            }
-            state["transactions"].append(tx)
-            sold.append(tx)
-        else:
-            still_open.append(pos)
-    state["positions"] = still_open
-
-    needed = TOP_N - len(state["positions"])
-    freed_from_sale = len(sold)
-    fill_now = min(needed, freed_from_sale) if is_weekend() else needed
-
-    if fill_now > 0 and state["cash_chf"] > 0:
-        held_tickers = {p["ticker"] for p in state["positions"]}
-        picks = select_new_picks(fill_now, held_tickers, universe_prices, allowed_classes)
+        held_and_pending = {p["ticker"] for p in state["positions"]} | existing_sell_tickers
+        picks = select_new_picks(1, held_and_pending, universe_prices, allowed_classes)
         if picks:
-            stake_chf = state["cash_chf"] / len(picks)
-            for p in picks:
-                ticker = p.get("ticker")
-                meta = UNIVERSE_BY_TICKER.get(ticker)
-                price_native = universe_prices.get(ticker)
-                if not meta or not price_native:
-                    continue
-                rate = fx.get(meta["currency"], 1.0) or 1.0
-                asset_class = meta["asset_class"]
-
-                if meta["currency"] == "CHF":
-                    order_value_native_est = stake_chf
-                    fee_native = transaction_fee_for(order_value_native_est, asset_class)
-                    fee_chf = fee_native
-                    fx_fee_chf = 0.0
-                else:
-                    order_value_native_est = stake_chf / rate
-                    fee_native = transaction_fee_for(order_value_native_est, asset_class)
-                    fee_chf = fee_native * rate
-                    fx_fee_chf = stake_chf * FX_FEE_PCT / 100
-                total_fee_chf = fee_chf + fx_fee_chf
-                investable_chf = stake_chf - total_fee_chf
-
-                price_chf = price_native * rate
-                shares = investable_chf / price_chf
-                new_pos = {
-                    "ticker": ticker, "isin": meta["isin"], "valor": meta.get("valor", "–"),
-                    "name": meta["name"], "currency": meta["currency"], "asset_class": asset_class,
-                    "shares": round(shares, 6),
-                    "buy_price_native": round(price_native, 2),
-                    "buy_price_chf": round(price_chf, 4),
-                    "cost_basis_chf": round(stake_chf, 2),
-                    "fee_chf": round(total_fee_chf, 2),
-                    "buy_date": today, "rationale": p.get("rationale", ""),
-                }
-                state["positions"].append(new_pos)
-                state["cash_chf"] -= stake_chf
-                tx = {
-                    "date": today, "action": "buy", "ticker": ticker,
+            meta = UNIVERSE_BY_TICKER.get(picks[0].get("ticker"))
+            if meta:
+                state["pending_actions"].append({
+                    "id": uuid.uuid4().hex[:8], "type": "buy", "ticker": meta["ticker"],
                     "isin": meta["isin"], "valor": meta.get("valor", "–"), "name": meta["name"],
-                    "asset_class": asset_class, "shares": round(shares, 6), "price_chf": round(price_chf, 2),
-                    "fee_chf": round(total_fee_chf, 2), "rationale": p.get("rationale", ""),
-                }
-                state["transactions"].append(tx)
-                bought.append(tx)
-            state["cash_chf"] = round(state["cash_chf"], 2)
+                    "asset_class": meta["asset_class"], "detected_date": today,
+                    "rationale": picks[0].get("rationale", ""), "linked_sell_id": sell_id,
+                })
+        existing_sell_tickers.add(pos["ticker"])
 
-    return {"sold": sold, "bought": bought}
+
+# ---------------------------------------------------------------------------
+# AUSFUEHRUNG NACH QUITTIERUNG (wird von confirm_action.py aufgerufen)
+# ---------------------------------------------------------------------------
+
+def execute_sell_action(state: dict, action: dict, prices: dict, fx: dict) -> dict | None:
+    today = date.today().isoformat()
+    pos = next((p for p in state["positions"] if p["ticker"] == action["ticker"]), None)
+    if not pos:
+        state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
+        return None
+
+    price_native = prices.get(pos["ticker"], pos.get("buy_price_native"))
+    rate = fx.get(pos["currency"], 1.0) or 1.0
+    gross_value_chf = pos["shares"] * price_native * rate
+    order_value_native = gross_value_chf / rate if pos["currency"] != "CHF" else gross_value_chf
+    fee_native = transaction_fee_for(order_value_native, pos.get("asset_class", "stock"))
+    fee_chf = fee_native * rate if pos["currency"] != "CHF" else fee_native
+    fx_fee_chf = gross_value_chf * FX_FEE_PCT / 100 if pos["currency"] != "CHF" else 0.0
+    total_fee_chf = fee_chf + fx_fee_chf
+    net_proceeds_chf = gross_value_chf - total_fee_chf
+    state["cash_chf"] += net_proceeds_chf
+
+    cost_basis = pos.get("cost_basis_chf", pos["shares"] * pos["buy_price_chf"])
+    profit_chf = net_proceeds_chf - cost_basis
+    profit_pct = profit_chf / cost_basis * 100
+
+    tx = {
+        "date": today, "action": "sell", "ticker": pos["ticker"],
+        "isin": pos["isin"], "valor": pos.get("valor", "–"), "name": pos["name"],
+        "asset_class": pos.get("asset_class", "stock"), "shares": pos["shares"],
+        "price_chf": round(gross_value_chf / pos["shares"], 2) if pos["shares"] else None,
+        "fee_chf": round(total_fee_chf, 2),
+        "profit_chf": round(profit_chf, 2), "profit_pct": round(profit_pct, 2),
+    }
+    state["transactions"].append(tx)
+    state["positions"] = [p for p in state["positions"] if p["ticker"] != pos["ticker"]]
+    state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
+    return tx
+
+
+def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dict | None:
+    today = date.today().isoformat()
+    meta = UNIVERSE_BY_TICKER.get(action["ticker"])
+    price_native = prices.get(action["ticker"])
+    if not meta or not price_native or state["cash_chf"] <= 0:
+        return None
+
+    rate = fx.get(meta["currency"], 1.0) or 1.0
+    asset_class = meta["asset_class"]
+    stake_chf = state["cash_chf"]  # 1:1-Ersatz -> gesamtes freies Cash wird eingesetzt
+
+    if meta["currency"] == "CHF":
+        fee_native = transaction_fee_for(stake_chf, asset_class)
+        fee_chf = fee_native
+        fx_fee_chf = 0.0
+    else:
+        order_value_native_est = stake_chf / rate
+        fee_native = transaction_fee_for(order_value_native_est, asset_class)
+        fee_chf = fee_native * rate
+        fx_fee_chf = stake_chf * FX_FEE_PCT / 100
+    total_fee_chf = fee_chf + fx_fee_chf
+    investable_chf = stake_chf - total_fee_chf
+
+    price_chf = price_native * rate
+    shares = investable_chf / price_chf
+    new_pos = {
+        "ticker": action["ticker"], "isin": meta["isin"], "valor": meta.get("valor", "–"),
+        "name": meta["name"], "currency": meta["currency"], "asset_class": asset_class,
+        "shares": round(shares, 6), "buy_price_native": round(price_native, 2),
+        "buy_price_chf": round(price_chf, 4), "cost_basis_chf": round(stake_chf, 2),
+        "fee_chf": round(total_fee_chf, 2), "buy_date": today,
+        "rationale": action.get("rationale", ""),
+    }
+    state["positions"].append(new_pos)
+    state["cash_chf"] = round(state["cash_chf"] - stake_chf, 2)
+
+    tx = {
+        "date": today, "action": "buy", "ticker": action["ticker"],
+        "isin": meta["isin"], "valor": meta.get("valor", "–"), "name": meta["name"],
+        "asset_class": asset_class, "shares": round(shares, 6), "price_chf": round(price_chf, 2),
+        "fee_chf": round(total_fee_chf, 2), "rationale": action.get("rationale", ""),
+    }
+    state["transactions"].append(tx)
+    state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
+    return tx
 
 
 def compute_benchmarks(start_date: str) -> dict:
@@ -380,8 +410,59 @@ def compute_benchmarks(start_date: str) -> dict:
     return results
 
 
+def portfolio_total_value(state: dict) -> float:
+    return state["cash_chf"] + sum(safe_value(p.get("current_value_chf")) for p in state["positions"])
+
+
 # ---------------------------------------------------------------------------
-# GEMEINSAME TABELLEN-BAUSTEINE (fuer Dashboard UND E-Mail)
+# QUITTIER-LINKS (GitHub Issue)
+# ---------------------------------------------------------------------------
+
+def confirm_url(action: dict) -> str:
+    title = f"CONFIRM:{action['type']}:{action['id']}"
+    lines = [
+        "Automatisch generiert -- bitte Titel NICHT aendern.", "",
+        f"Ticker: {action['ticker']}", f"Name: {action['name']}", f"ISIN: {action['isin']}",
+    ]
+    if action["type"] == "sell":
+        lines.append(f"Gewinn: {action.get('profit_pct', 0):+.2f}%")
+    else:
+        lines.append(f"Begruendung: {action.get('rationale', '')}")
+    body = "\n".join(lines)
+    params = urllib.parse.urlencode({"title": title, "body": body, "labels": "confirm"})
+    return f"{ISSUE_BASE_URL}?{params}"
+
+
+def render_pending_actions(pending_actions: list) -> str:
+    sells = [a for a in pending_actions if a["type"] == "sell"]
+    if not sells:
+        return "<p style='color:#94a3b8;'>Keine offenen Vorschlaege -- keine Position ueber der Gewinn-Schwelle.</p>"
+
+    blocks = []
+    for sell in sells:
+        buy = next((a for a in pending_actions if a["type"] == "buy" and a.get("linked_sell_id") == sell["id"]), None)
+        sell_line = (
+            f"<div style='margin-bottom:4px;'>"
+            f"<strong>{sell['name']}</strong> ({sell['isin']}) hat {sell.get('profit_pct', 0):+.2f}% erreicht. "
+            f"<a href='{confirm_url(sell)}' style='color:#38bdf8;'>Titel verkaufen (quittieren)</a>"
+            f"</div>"
+        )
+        if buy:
+            buy_status = " (bereits von dir quittiert, wartet auf Verkaufsbestaetigung)" if buy.get("status") == "confirm_requested" else ""
+            buy_line = (
+                f"<div style='margin-bottom:14px;margin-left:12px;color:#cbd5e1;'>"
+                f"Vorschlag Nachkauf: <strong>{buy['name']}</strong> ({buy['isin']}) -- {buy.get('rationale','')} "
+                f"<a href='{confirm_url(buy)}' style='color:#38bdf8;'>Kauf quittieren</a>{buy_status}"
+                f"</div>"
+            )
+        else:
+            buy_line = "<div style='margin-bottom:14px;margin-left:12px;color:#94a3b8;'>Kein Ersatz-Vorschlag verfuegbar.</div>"
+        blocks.append(sell_line + buy_line)
+    return "".join(blocks)
+
+
+# ---------------------------------------------------------------------------
+# TABELLEN (Dashboard + E-Mail)
 # ---------------------------------------------------------------------------
 
 def positions_table_rows(positions: list, html: bool) -> str:
@@ -394,7 +475,6 @@ def positions_table_rows(positions: list, html: bool) -> str:
                 f"<tr>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p['name']}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p['isin']}</td>"
-                f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p.get('valor','–')}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{fmt_shares(p.get('shares'))}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p.get('current_value_chf','n/a')} CHF</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;color:{color};'>{p.get('profit_chf',0):+.2f} CHF ({profit_pct:+.2f}%)</td>"
@@ -402,9 +482,8 @@ def positions_table_rows(positions: list, html: bool) -> str:
             )
         else:
             rows.append(
-                f"- {p['name']} | ISIN {p['isin']} | Valor {p.get('valor','–')} | "
-                f"{fmt_shares(p.get('shares'))} Stueck | {p.get('current_value_chf','n/a')} CHF | "
-                f"{p.get('profit_chf',0):+.2f} CHF ({profit_pct:+.2f}%)"
+                f"- {p['name']} | ISIN {p['isin']} | {fmt_shares(p.get('shares'))} Stueck | "
+                f"{p.get('current_value_chf','n/a')} CHF | {p.get('profit_chf',0):+.2f} CHF ({profit_pct:+.2f}%)"
             )
     return "".join(rows) if html else "\n".join(rows)
 
@@ -416,10 +495,8 @@ def render_tx_row(tx: dict) -> str:
     return (
         f"<tr><td>{tx['date']}</td><td>{tx['action'].upper()}</td>"
         f"<td>{tx['ticker']}</td><td>{tx.get('isin','')}</td><td>{tx.get('valor','–')}</td><td>{tx.get('name','')}</td>"
-        f"<td>{tx.get('asset_class','stock')}</td>"
-        f"<td>{fmt_shares(tx.get('shares'))}</td>"
-        f"<td>{tx.get('fee_chf', '-')}</td>"
-        f"<td>{profit_cell}</td><td>{pct_cell}</td></tr>"
+        f"<td>{tx.get('asset_class','stock')}</td><td>{fmt_shares(tx.get('shares'))}</td>"
+        f"<td>{tx.get('fee_chf', '-')}</td><td>{profit_cell}</td><td>{pct_cell}</td></tr>"
     )
 
 
@@ -427,17 +504,13 @@ def render_tx_row(tx: dict) -> str:
 # DASHBOARD
 # ---------------------------------------------------------------------------
 
-def render_dashboard(state: dict, benchmarks: dict, today_actions: dict, portfolio_total: float, weekend: bool) -> str:
+def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, weekend: bool) -> str:
     profit_chf = portfolio_total - BUDGET_CHF
     profit_pct = profit_chf / BUDGET_CHF * 100
 
+    pending_html = render_pending_actions(state["pending_actions"])
     positions_rows_html = positions_table_rows(state["positions"], html=True)
-
-    bench_rows = "".join(
-        f"<tr><td>{name}</td><td>{val if val is not None else 'n/a'} CHF</td></tr>"
-        for name, val in benchmarks.items()
-    )
-
+    bench_rows = "".join(f"<tr><td>{n}</td><td>{v if v is not None else 'n/a'} CHF</td></tr>" for n, v in benchmarks.items())
     tx_rows = "".join(render_tx_row(tx) for tx in reversed(state["transactions"]))
 
     history = state["value_history"]
@@ -448,30 +521,10 @@ def render_dashboard(state: dict, benchmarks: dict, today_actions: dict, portfol
     chart_nasdaq = json.dumps([h.get("NASDAQ") for h in history])
     chart_savings = json.dumps([h.get("Sparkonto") for h in history])
 
-    sold_html = "".join(
-        f"<li>{tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}): {fmt_shares(tx.get('shares'))} Stueck verkauft, "
-        f"Gewinn {tx['profit_chf']} CHF ({tx['profit_pct']:+.2f}%) nach Gebuehren von {tx.get('fee_chf',0)} CHF</li>"
-        for tx in today_actions["sold"]
-    )
-    bought_html = "".join(
-        f"<li>{tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}): {fmt_shares(tx.get('shares'))} Stueck neu gekauft "
-        f"(Gebuehren {tx.get('fee_chf',0)} CHF)</li>"
-        for tx in today_actions["bought"]
-    )
-    actions_block = ""
-    if sold_html or bought_html:
-        actions_block = f"""<div class="commentary">
-          <strong>Heutige Aktionen</strong>
-          <ul>{sold_html}{bought_html}</ul>
-        </div>"""
-
     weekend_note = ""
     if weekend:
-        weekend_note = """<div class="commentary">
-          <strong>Wochenende</strong> -- Boersen fuer Aktien/ETFs sind geschlossen.
-          Nur Krypto-Positionen wurden heute aktualisiert; alle anderen Positionen
-          zeigen den Stand von Freitag.
-        </div>"""
+        weekend_note = """<div class="commentary"><strong>Wochenende</strong> -- Boersen fuer Aktien/ETFs
+          sind geschlossen. Nur Krypto-Positionen wurden heute aktualisiert.</div>"""
 
     return f"""<!DOCTYPE html>
 <html lang="de">
@@ -510,12 +563,16 @@ def render_dashboard(state: dict, benchmarks: dict, today_actions: dict, portfol
   </div>
 
   {weekend_note}
-  {actions_block}
+
+  <div class="chart-box">
+    <h2>Heutige Aktionen</h2>
+    {pending_html}
+  </div>
 
   <div class="chart-box table-wrap">
     <h2>Aktuelle Positionen</h2>
     <table>
-      <tr><th>Titel Name</th><th>ISIN</th><th>Valor</th><th>Stueckzahl</th><th>Wert</th><th>Gewinn/Verlust</th></tr>
+      <tr><th>Titel Name</th><th>ISIN</th><th>Stueckzahl</th><th>Wert</th><th>Gewinn/Verlust</th></tr>
       {positions_rows_html}
     </table>
   </div>
@@ -539,12 +596,10 @@ def render_dashboard(state: dict, benchmarks: dict, today_actions: dict, portfol
   </div>
 
   <p class="disclaimer">
-    Keine Anlageberatung, kein echter Handel. Simulation auf Basis oeffentlicher
-    Marktdaten. Index-Vergleiche sind reine Preis-Renditen (ohne Dividenden,
-    ohne FX-Effekte bei Fremdwaehrungs-Indizes). Courtage-, Krypto- und FX-
-    Gebuehren sind Swissquote-Richtwerte (Stand 2026); die quartalsweise
-    Depotgebuehr ist nicht eingerechnet. ISIN/Valor nach bestem Wissen
-    hinterlegt, vor echten Entscheidungen selbst verifizieren.
+    Keine Anlageberatung, kein echter Handel. Simulation auf Basis oeffentlicher Marktdaten.
+    Verkauf/Nachkauf erfolgen erst nach Quittierung via GitHub-Issue. Courtage-, Krypto- und
+    FX-Gebuehren sind Swissquote-Richtwerte (Stand 2026). ISIN/Valor nach bestem Wissen hinterlegt,
+    vor echten Entscheidungen selbst verifizieren.
   </p>
 
 <script>
@@ -572,44 +627,26 @@ def render_dashboard(state: dict, benchmarks: dict, today_actions: dict, portfol
 
 
 # ---------------------------------------------------------------------------
-# E-MAIL (HTML, mit klickbarem Dashboard-Link)
+# E-MAIL
 # ---------------------------------------------------------------------------
 
-def render_email_html(state, benchmarks, today_actions, portfolio_total, weekend) -> str:
+def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
     profit_chf = portfolio_total - BUDGET_CHF
     profit_pct = profit_chf / BUDGET_CHF * 100
     profit_color = "#16a34a" if profit_chf >= 0 else "#dc2626"
 
+    pending_html = render_pending_actions(state["pending_actions"])
     positions_rows_html = positions_table_rows(state["positions"], html=True)
-
     bench_rows = "".join(
-        f"<tr><td style='padding:4px 10px;'>{name}</td><td style='padding:4px 10px;'>{val if val is not None else 'n/a'} CHF</td></tr>"
-        for name, val in benchmarks.items()
-    )
-
-    action_items = ""
-    for tx in today_actions["sold"]:
-        action_items += (
-            f"<li><strong>VERKAUFT:</strong> {tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}) -- "
-            f"{fmt_shares(tx.get('shares'))} Stueck, Gewinn {tx['profit_chf']} CHF ({tx['profit_pct']:+.2f}%), "
-            f"Gebuehren {tx.get('fee_chf',0)} CHF</li>"
-        )
-    for tx in today_actions["bought"]:
-        action_items += (
-            f"<li><strong>GEKAUFT:</strong> {tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}) -- "
-            f"{fmt_shares(tx.get('shares'))} Stueck @ {tx['price_chf']} CHF, Gebuehren {tx.get('fee_chf',0)} CHF</li>"
-        )
-    actions_block = (
-        f"<ul style='margin:8px 0;padding-left:20px;'>{action_items}</ul>" if action_items
-        else f"<p style='color:#94a3b8;'>Keine Transaktionen heute (keine Position ueber +{SELL_THRESHOLD_PCT:.0f}%).</p>"
+        f"<tr><td style='padding:4px 10px;'>{n}</td><td style='padding:4px 10px;'>{v if v is not None else 'n/a'} CHF</td></tr>"
+        for n, v in benchmarks.items()
     )
 
     weekend_banner = ""
     if weekend:
         weekend_banner = (
             "<div style='background:#334155;color:#e2e8f0;padding:10px 14px;border-radius:8px;"
-            "font-size:0.85rem;margin-bottom:16px;'>Wochenende -- nur Krypto-Positionen aktualisiert, "
-            "Aktien/ETFs zeigen den Freitags-Stand.</div>"
+            "font-size:0.85rem;margin-bottom:16px;'>Wochenende -- nur Krypto-Positionen aktualisiert.</div>"
         )
 
     return f"""<!DOCTYPE html>
@@ -636,14 +673,14 @@ def render_email_html(state, benchmarks, today_actions, portfolio_total, weekend
         </tr>
       </table>
 
+      <h2 style="font-size:1rem;margin:18px 0 8px 0;">Heutige Aktionen</h2>
+      {pending_html}
+
       <h2 style="font-size:1rem;margin:18px 0 8px 0;">Aktuelle Positionen</h2>
       <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
-        <tr style="color:#94a3b8;"><th style="text-align:left;padding:6px 10px;">Titel Name</th><th style="text-align:left;padding:6px 10px;">ISIN</th><th style="text-align:left;padding:6px 10px;">Valor</th><th style="text-align:left;padding:6px 10px;">Stueckzahl</th><th style="text-align:left;padding:6px 10px;">Wert</th><th style="text-align:left;padding:6px 10px;">Gewinn/Verlust</th></tr>
+        <tr style="color:#94a3b8;"><th style="text-align:left;padding:6px 10px;">Titel Name</th><th style="text-align:left;padding:6px 10px;">ISIN</th><th style="text-align:left;padding:6px 10px;">Stueckzahl</th><th style="text-align:left;padding:6px 10px;">Wert</th><th style="text-align:left;padding:6px 10px;">Gewinn/Verlust</th></tr>
         {positions_rows_html}
       </table>
-
-      <h2 style="font-size:1rem;margin:18px 0 8px 0;">Aktionen heute</h2>
-      {actions_block}
 
       <h2 style="font-size:1rem;margin:18px 0 8px 0;">Vergleich seit Start</h2>
       <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">{bench_rows}</table>
@@ -656,8 +693,8 @@ def render_email_html(state, benchmarks, today_actions, portfolio_total, weekend
       </div>
 
       <p style="color:#64748b;font-size:0.7rem;line-height:1.4;margin-top:24px;">
-        Keine Anlageberatung, kein echter Handel. Simulation inkl. Swissquote-Richtgebuehren
-        (Courtage/Krypto + FX), ohne Gewaehr.
+        Keine Anlageberatung, kein echter Handel. Verkauf/Nachkauf erst nach Quittierung.
+        Simulation inkl. Swissquote-Richtgebuehren, ohne Gewaehr.
       </p>
     </div>
   </div>
@@ -680,7 +717,7 @@ def send_email(subject: str, html_body: str, text_body: str):
 
 
 # ---------------------------------------------------------------------------
-# MAIN
+# MAIN (taeglicher Lauf: bewerten, Vorschlaege erzeugen, Mail/Dashboard)
 # ---------------------------------------------------------------------------
 
 def main():
@@ -695,45 +732,34 @@ def main():
     fx = fetch_fx_rates()
 
     mark_to_market(state, universe_prices, fx, allowed_classes)
-    today_actions = process_sells_and_buys(state, universe_prices, fx, allowed_classes)
-    mark_to_market(state, universe_prices, fx, allowed_classes)
+    detect_pending_actions(state, universe_prices, allowed_classes)
 
-    portfolio_total = state["cash_chf"] + sum(safe_value(p.get("current_value_chf")) for p in state["positions"])
+    portfolio_total = portfolio_total_value(state)
     benchmarks = compute_benchmarks(state["start_date"])
-
-    state["value_history"].append({
-        "date": today, "portfolio_chf": round(portfolio_total, 2), **benchmarks
-    })
+    state["value_history"].append({"date": today, "portfolio_chf": round(portfolio_total, 2), **benchmarks})
     save_state(state)
 
     os.makedirs(DASHBOARD_DIR, exist_ok=True)
-    dashboard_html = render_dashboard(state, benchmarks, today_actions, portfolio_total, weekend)
+    dashboard_html = render_dashboard(state, benchmarks, portfolio_total, weekend)
     with open(DASHBOARD_FILE, "w", encoding="utf-8") as f:
         f.write(dashboard_html)
 
     profit_chf = portfolio_total - BUDGET_CHF
     profit_pct = profit_chf / BUDGET_CHF * 100
-
-    # Text-Fallback fuer E-Mail-Clients ohne HTML
     text_positions = positions_table_rows(state["positions"], html=False)
-    text_bench = "\n".join(f"- {name}: {val if val is not None else 'n/a'} CHF" for name, val in benchmarks.items())
-    text_actions = []
-    for tx in today_actions["sold"]:
-        text_actions.append(f"VERKAUFT: {tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}) -- {fmt_shares(tx.get('shares'))} Stueck, Gewinn {tx['profit_chf']} CHF ({tx['profit_pct']:+.2f}%)")
-    for tx in today_actions["bought"]:
-        text_actions.append(f"GEKAUFT: {tx['ticker']} ({tx['isin']}, Valor {tx.get('valor','–')}, {tx['name']}) -- {fmt_shares(tx.get('shares'))} Stueck @ {tx['price_chf']} CHF")
-    text_actions_str = "\n".join(text_actions) if text_actions else f"Keine Transaktionen heute (keine Position ueber +{SELL_THRESHOLD_PCT:.0f}%)."
+    text_bench = "\n".join(f"- {n}: {v if v is not None else 'n/a'} CHF" for n, v in benchmarks.items())
+    pending_sells = [a for a in state["pending_actions"] if a["type"] == "sell"]
+    text_pending = "\n".join(f"- {a['name']} ({a['isin']}): {a.get('profit_pct',0):+.2f}% -- Dashboard zum Quittieren oeffnen" for a in pending_sells) or "Keine offenen Vorschlaege."
 
     text_body = (
         f"Portfolio-Wert: {portfolio_total:.2f} CHF (Start: {BUDGET_CHF} CHF)\n"
         f"Gewinn/Verlust: {profit_chf:+.2f} CHF ({profit_pct:+.2f}%)\n\n"
+        f"Heutige Aktionen:\n{text_pending}\n\n"
         f"Positionen:\n{text_positions}\n\n"
         f"Vergleich seit {state['start_date']}:\n{text_bench}\n\n"
-        f"Aktionen heute:\n{text_actions_str}\n\n"
-        f"Dashboard: {DASHBOARD_URL}\n\n"
-        "Keine Anlageberatung, kein echter Handel. Simulation, ohne Gewaehr."
+        f"Dashboard: {DASHBOARD_URL}\n\nSimulation, keine Anlageberatung."
     )
-    html_body = render_email_html(state, benchmarks, today_actions, portfolio_total, weekend)
+    html_body = render_email_html(state, benchmarks, portfolio_total, weekend)
 
     subject = f"Portfolio Update {today}: {portfolio_total:.0f} CHF ({profit_pct:+.1f}%)"
     send_email(subject, html_body, text_body)

@@ -2,16 +2,15 @@
 Taeglicher Investment Advisory Agent -- Portfolio-Modus mit Bestaetigung
 =============================================================================
 Haelt ein fiktives Portfolio in CHF. Erreicht eine Position seit Kauf
->= SELL_THRESHOLD_PCT Gewinn, wird NICHT automatisch verkauft -- stattdessen
-erzeugt der Agent einen VORSCHLAG (Verkauf + Nachkauf-Idee), sichtbar im
-Dashboard und in der Mail, jeweils mit einem "Quittieren"-Link. Erst wenn
-der Link angeklickt und das vorausgefuellte GitHub-Issue abgeschickt wird,
-fuehrt ein zweiter Workflow (confirm_action.py) die Aktion wirklich aus.
-Ohne Quittierung bleibt die Position unveraendert im Portfolio, es wird
-nichts verkauft und nichts Neues gekauft.
+>= SELL_THRESHOLD_PCT Gewinn, erzeugt der Agent einen VORSCHLAG (Verkauf +
+Nachkauf-Idee, mit >= 3 Websuche-Quellen belegt), sichtbar im Dashboard und
+in der Mail, jeweils mit einem "Quittieren"-Link (GitHub Issue). Erst nach
+Quittierung fuehrt confirm_action.py die Aktion wirklich aus.
 
 Wochenende (Sa/So): nur Krypto-Positionen werden bewertet/vorgeschlagen,
-Aktien/ETFs bleiben auf dem Freitags-Stand eingefroren.
+Aktien/ETFs bleiben auf dem Freitags-Stand eingefroren. In den Grafiken
+werden Wochenend-Datenpunkte nur gezeigt, wenn das Portfolio aktuell
+Kryptowaehrungen enthaelt (sonst ausgeblendet, da ohnehin unveraendert).
 
 WICHTIG: Keine Anlageberatung, kein echter Handel. Simulation auf Basis
 oeffentlicher Marktdaten. ISIN/Valor/Gebuehren sind Richtwerte ohne Gewaehr.
@@ -173,10 +172,12 @@ def load_state() -> dict:
             "transactions": [],
             "value_history": [],
             "pending_actions": [],
+            "position_history": {},
         }
     with open(STATE_FILE, "r", encoding="utf-8") as f:
         state = json.load(f)
     state.setdefault("pending_actions", [])
+    state.setdefault("position_history", {})
     for pos in state.get("positions", []):
         for key in ("current_value_chf", "profit_chf", "profit_pct"):
             if isinstance(pos.get(key), float) and math.isnan(pos[key]):
@@ -190,7 +191,7 @@ def save_state(state: dict):
 
 
 # ---------------------------------------------------------------------------
-# CLAUDE: NEUEN ERSATZ-PICK VORSCHLAGEN
+# CLAUDE: NEUEN ERSATZ-PICK VORSCHLAGEN (mit Websuche + Quellenbelegen)
 # ---------------------------------------------------------------------------
 
 def select_new_picks(needed: int, exclude_tickers: set, universe_prices: dict, allowed_classes: set) -> list:
@@ -219,21 +220,36 @@ Waehle aus dem gegebenen Universum genau {needed} Titel aus, die aus Sicht
 der Marktdaten aktuell am interessantesten erscheinen. Waehle NUR aus den
 gelisteten Tickern, erfinde keine neuen.
 
-Antworte AUSSCHLIESSLICH mit einem JSON-Objekt, keine Einleitung, keine
-Markdown-Codebloecke. Format:
-{{"picks": [{{"ticker": "XXX", "rationale": "kurze Begruendung auf Deutsch, 1-2 Saetze"}}]}}"""
-    user_prompt = f"Verfuegbares Anlageuniversum:\n{candidates_summary}\n\nWaehle {needed} Titel."
+Nutze die Websuche, um deine Auswahl mit aktuellen, konkreten Informationen
+zu belegen. Gib am Ende MINDESTENS 3 verschiedene Quellen-URLs aus deiner
+Websuche an, die deine Entscheidung stuetzen.
+
+Antworte GANZ AM ENDE AUSSCHLIESSLICH mit einem JSON-Objekt (keine Einleitung,
+kein Markdown-Codeblock davor oder danach), Format:
+{{"picks": [{{"ticker": "XXX", "rationale": "kurze Begruendung auf Deutsch, 1-2 Saetze"}}],
+  "sources": ["https://...", "https://...", "https://..."]}}"""
+
+    user_prompt = f"Verfuegbares Anlageuniversum:\n{candidates_summary}\n\nWaehle {needed} Titel und recherchiere Quellen dazu."
 
     response = client.messages.create(
-        model="claude-sonnet-4-6", max_tokens=600,
-        system=system_prompt, messages=[{"role": "user", "content": user_prompt}],
+        model="claude-sonnet-4-6",
+        max_tokens=1500,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}],
+        tools=[{"type": "web_search_20250305", "name": "web_search"}],
     )
-    text = "".join(b.text for b in response.content if b.type == "text")
+    text_blocks = [b.text for b in response.content if getattr(b, "type", None) == "text"]
+    text = text_blocks[-1] if text_blocks else ""
     clean = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
-        return json.loads(clean).get("picks", [])
+        parsed = json.loads(clean)
     except json.JSONDecodeError:
         return []
+    sources = parsed.get("sources", [])
+    picks = parsed.get("picks", [])
+    for p in picks:
+        p["sources"] = sources
+    return picks
 
 
 # ---------------------------------------------------------------------------
@@ -257,14 +273,9 @@ def mark_to_market(state: dict, prices: dict, fx: dict, allowed_classes: set):
 
 
 def detect_pending_actions(state: dict, universe_prices: dict, allowed_classes: set):
-    """Erzeugt Verkaufs-/Nachkauf-VORSCHLAEGE fuer Positionen >= SELL_THRESHOLD_PCT.
-    Fuehrt NICHTS aus -- das passiert erst bei Quittierung via confirm_action.py.
-    Veraltete Vorschlaege (Position wieder unter der Schwelle) werden entfernt."""
     today = date.today().isoformat()
 
-    # 1) veraltete SELL-Vorschlaege entfernen, falls Position nicht mehr >= Schwelle
-    kept_sells = []
-    kept_sell_ids = set()
+    kept_sells, kept_sell_ids = [], set()
     for a in state["pending_actions"]:
         if a["type"] != "sell":
             continue
@@ -273,14 +284,12 @@ def detect_pending_actions(state: dict, universe_prices: dict, allowed_classes: 
             kept_sells.append(a)
             kept_sell_ids.add(a["id"])
 
-    # 2) BUY-Vorschlaege behalten, wenn schon vom User quittiert ODER zugehoeriger Sell noch gueltig
     kept_buys = [
         a for a in state["pending_actions"]
         if a["type"] == "buy" and (a.get("status") == "confirm_requested" or a.get("linked_sell_id") in kept_sell_ids)
     ]
     state["pending_actions"] = kept_sells + kept_buys
 
-    # 3) neue Vorschlaege fuer Positionen, die NEU >= Schwelle sind
     existing_sell_tickers = {a["ticker"] for a in state["pending_actions"] if a["type"] == "sell"}
     for pos in state["positions"]:
         if pos.get("asset_class", "stock") not in allowed_classes:
@@ -307,13 +316,15 @@ def detect_pending_actions(state: dict, universe_prices: dict, allowed_classes: 
                     "id": uuid.uuid4().hex[:8], "type": "buy", "ticker": meta["ticker"],
                     "isin": meta["isin"], "valor": meta.get("valor", "–"), "name": meta["name"],
                     "asset_class": meta["asset_class"], "detected_date": today,
-                    "rationale": picks[0].get("rationale", ""), "linked_sell_id": sell_id,
+                    "rationale": picks[0].get("rationale", ""),
+                    "sources": picks[0].get("sources", []),
+                    "linked_sell_id": sell_id,
                 })
         existing_sell_tickers.add(pos["ticker"])
 
 
 # ---------------------------------------------------------------------------
-# AUSFUEHRUNG NACH QUITTIERUNG (wird von confirm_action.py aufgerufen)
+# AUSFUEHRUNG NACH QUITTIERUNG
 # ---------------------------------------------------------------------------
 
 def execute_sell_action(state: dict, action: dict, prices: dict, fx: dict) -> dict | None:
@@ -361,7 +372,7 @@ def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dic
 
     rate = fx.get(meta["currency"], 1.0) or 1.0
     asset_class = meta["asset_class"]
-    stake_chf = state["cash_chf"]  # 1:1-Ersatz -> gesamtes freies Cash wird eingesetzt
+    stake_chf = state["cash_chf"]
 
     if meta["currency"] == "CHF":
         fee_native = transaction_fee_for(stake_chf, asset_class)
@@ -383,7 +394,7 @@ def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dic
         "shares": round(shares, 6), "buy_price_native": round(price_native, 2),
         "buy_price_chf": round(price_chf, 4), "cost_basis_chf": round(stake_chf, 2),
         "fee_chf": round(total_fee_chf, 2), "buy_date": today,
-        "rationale": action.get("rationale", ""),
+        "rationale": action.get("rationale", ""), "sources": action.get("sources", []),
     }
     state["positions"].append(new_pos)
     state["cash_chf"] = round(state["cash_chf"] - stake_chf, 2)
@@ -393,6 +404,7 @@ def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dic
         "isin": meta["isin"], "valor": meta.get("valor", "–"), "name": meta["name"],
         "asset_class": asset_class, "shares": round(shares, 6), "price_chf": round(price_chf, 2),
         "fee_chf": round(total_fee_chf, 2), "rationale": action.get("rationale", ""),
+        "sources": action.get("sources", []),
     }
     state["transactions"].append(tx)
     state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
@@ -412,6 +424,17 @@ def compute_benchmarks(start_date: str) -> dict:
 
 def portfolio_total_value(state: dict) -> float:
     return state["cash_chf"] + sum(safe_value(p.get("current_value_chf")) for p in state["positions"])
+
+
+def has_crypto_now(state: dict) -> bool:
+    return any(p.get("asset_class") == "crypto" for p in state["positions"])
+
+
+def filtered_value_history(state: dict) -> list:
+    """Wochenend-Punkte nur behalten, wenn das Portfolio aktuell Krypto enthaelt."""
+    if has_crypto_now(state):
+        return state["value_history"]
+    return [h for h in state["value_history"] if date.fromisoformat(h["date"]).weekday() < 5]
 
 
 # ---------------------------------------------------------------------------
@@ -449,11 +472,16 @@ def render_pending_actions(pending_actions: list) -> str:
         )
         if buy:
             buy_status = " (bereits von dir quittiert, wartet auf Verkaufsbestaetigung)" if buy.get("status") == "confirm_requested" else ""
+            sources = buy.get("sources", [])
+            sources_html = ""
+            if sources:
+                links = " · ".join(f"<a href='{s}' style='color:#64748b;' target='_blank'>Quelle {i+1}</a>" for i, s in enumerate(sources[:5]))
+                sources_html = f"<div style='font-size:0.75rem;color:#64748b;margin-top:2px;'>{links}</div>"
             buy_line = (
                 f"<div style='margin-bottom:14px;margin-left:12px;color:#cbd5e1;'>"
                 f"Vorschlag Nachkauf: <strong>{buy['name']}</strong> ({buy['isin']}) -- {buy.get('rationale','')} "
                 f"<a href='{confirm_url(buy)}' style='color:#38bdf8;'>Kauf quittieren</a>{buy_status}"
-                f"</div>"
+                f"{sources_html}</div>"
             )
         else:
             buy_line = "<div style='margin-bottom:14px;margin-left:12px;color:#94a3b8;'>Kein Ersatz-Vorschlag verfuegbar.</div>"
@@ -510,16 +538,34 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
 
     pending_html = render_pending_actions(state["pending_actions"])
     positions_rows_html = positions_table_rows(state["positions"], html=True)
-    bench_rows = "".join(f"<tr><td>{n}</td><td>{v if v is not None else 'n/a'} CHF</td></tr>" for n, v in benchmarks.items())
+
+    bench_rows = f"<tr style='font-weight:600;'><td>Portfolio (dein Agent)</td><td>{portfolio_total:.2f} CHF</td></tr>"
+    bench_rows += "".join(f"<tr><td>{n}</td><td>{v if v is not None else 'n/a'} CHF</td></tr>" for n, v in benchmarks.items())
+
     tx_rows = "".join(render_tx_row(tx) for tx in reversed(state["transactions"]))
 
-    history = state["value_history"]
-    chart_labels = json.dumps([h["date"] for h in history])
-    chart_portfolio = json.dumps([h.get("portfolio_chf") for h in history])
-    chart_smi = json.dumps([h.get("SMI") for h in history])
-    chart_sp500 = json.dumps([h.get("S&P 500") for h in history])
-    chart_nasdaq = json.dumps([h.get("NASDAQ") for h in history])
-    chart_savings = json.dumps([h.get("Sparkonto") for h in history])
+    vh = filtered_value_history(state)
+    chart_labels = json.dumps([h["date"] for h in vh])
+    chart_portfolio = json.dumps([h.get("portfolio_chf") for h in vh])
+    chart_smi = json.dumps([h.get("SMI") for h in vh])
+    chart_sp500 = json.dumps([h.get("S&P 500") for h in vh])
+    chart_nasdaq = json.dumps([h.get("NASDAQ") for h in vh])
+    chart_savings = json.dumps([h.get("Sparkonto") for h in vh])
+
+    # Performance einzelner Titel (aktuell gehaltene Positionen)
+    title_labels = [h["date"] for h in vh]
+    colors = ["#38bdf8", "#f472b6", "#facc15", "#a78bfa", "#34d399"]
+    title_datasets = []
+    for i, pos in enumerate(state["positions"]):
+        key = f"{pos['ticker']}#{pos.get('buy_date','')}"
+        hist_map = {h["date"]: h.get("profit_pct") for h in state.get("position_history", {}).get(key, [])}
+        series = [hist_map.get(d) for d in title_labels]
+        title_datasets.append({
+            "label": pos["name"], "data": series,
+            "borderColor": colors[i % len(colors)], "tension": 0.2, "pointRadius": 0, "spanGaps": True,
+        })
+    title_chart_labels = json.dumps(title_labels)
+    title_chart_datasets = json.dumps(title_datasets)
 
     weekend_note = ""
     if weekend:
@@ -583,6 +629,11 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
   </div>
 
   <div class="chart-box">
+    <h2>Performance einzelner Titel</h2>
+    <canvas id="titleChart" height="260"></canvas>
+  </div>
+
+  <div class="chart-box">
     <h2>Aktueller Vergleich (hypothetisch, {BUDGET_CHF} CHF seit {state['start_date']})</h2>
     <table><tr><th>Anlage</th><th>Wert heute</th></tr>{bench_rows}</table>
   </div>
@@ -599,7 +650,8 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     Keine Anlageberatung, kein echter Handel. Simulation auf Basis oeffentlicher Marktdaten.
     Verkauf/Nachkauf erfolgen erst nach Quittierung via GitHub-Issue. Courtage-, Krypto- und
     FX-Gebuehren sind Swissquote-Richtwerte (Stand 2026). ISIN/Valor nach bestem Wissen hinterlegt,
-    vor echten Entscheidungen selbst verifizieren.
+    vor echten Entscheidungen selbst verifizieren. Wochenend-Datenpunkte werden in den Grafiken
+    nur angezeigt, wenn das Portfolio aktuell Kryptowaehrungen enthaelt.
   </p>
 
 <script>
@@ -621,6 +673,19 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
       plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
     }}
   }});
+
+  new Chart(document.getElementById('titleChart'), {{
+    type: 'line',
+    data: {{ labels: {title_chart_labels}, datasets: {title_chart_datasets} }},
+    options: {{
+      responsive: true,
+      scales: {{
+        x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 8 }} }},
+        y: {{ ticks: {{ color: '#94a3b8', callback: (v) => v + '%' }} }}
+      }},
+      plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
+    }}
+  }});
 </script>
 </body>
 </html>"""
@@ -637,7 +702,8 @@ def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
 
     pending_html = render_pending_actions(state["pending_actions"])
     positions_rows_html = positions_table_rows(state["positions"], html=True)
-    bench_rows = "".join(
+    bench_rows = f"<tr style='font-weight:600;'><td style='padding:4px 10px;'>Portfolio (dein Agent)</td><td style='padding:4px 10px;'>{portfolio_total:.2f} CHF</td></tr>"
+    bench_rows += "".join(
         f"<tr><td style='padding:4px 10px;'>{n}</td><td style='padding:4px 10px;'>{v if v is not None else 'n/a'} CHF</td></tr>"
         for n, v in benchmarks.items()
     )
@@ -651,48 +717,32 @@ def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
-<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#f1f5f9;margin:0;padding:20px;">
-  <div style="max-width:640px;margin:0 auto;background:#0f172a;color:#e2e8f0;border-radius:14px;overflow:hidden;">
-    <div style="background:#1e293b;padding:20px 24px;">
-      <h1 style="margin:0;font-size:1.3rem;">Investment Advisory -- {date.today().strftime('%d.%m.%Y')}</h1>
-      <p style="margin:6px 0 0 0;color:#94a3b8;font-size:0.85rem;">Start: {state['start_date']} | Budget: {BUDGET_CHF} CHF</p>
+<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#ffffff;margin:0;padding:16px;color:#1e293b;">
+  <div style="max-width:640px;margin:0 auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    <div style="background:#f8fafc;padding:16px 20px;border-bottom:1px solid #e2e8f0;">
+      <h1 style="margin:0;font-size:1.15rem;color:#0f172a;">Investment Advisory -- {date.today().strftime('%d.%m.%Y')}</h1>
+      <p style="margin:4px 0 0 0;color:#64748b;font-size:0.8rem;">Start: {state['start_date']} | Budget: {BUDGET_CHF} CHF</p>
     </div>
-    <div style="padding:20px 24px;">
+    <div style="padding:18px 20px;">
       {weekend_banner}
-      <table style="width:100%;margin-bottom:16px;">
-        <tr>
-          <td style="padding:10px;background:#1e293b;border-radius:8px;">
-            <div style="color:#94a3b8;font-size:0.75rem;">Portfolio-Wert</div>
-            <div style="font-size:1.2rem;font-weight:600;">{portfolio_total:.2f} CHF</div>
-          </td>
-          <td style="width:12px;"></td>
-          <td style="padding:10px;background:#1e293b;border-radius:8px;">
-            <div style="color:#94a3b8;font-size:0.75rem;">Gewinn/Verlust</div>
-            <div style="font-size:1.2rem;font-weight:600;color:{profit_color};">{profit_chf:+.2f} CHF ({profit_pct:+.2f}%)</div>
-          </td>
-        </tr>
-      </table>
+      <p><strong>Portfolio-Wert:</strong> {portfolio_total:.2f} CHF &nbsp;|&nbsp;
+         <strong>Gewinn/Verlust:</strong> <span style="color:{profit_color};">{profit_chf:+.2f} CHF ({profit_pct:+.2f}%)</span></p>
 
-      <h2 style="font-size:1rem;margin:18px 0 8px 0;">Heutige Aktionen</h2>
+      <h2 style="font-size:0.95rem;margin:16px 0 6px 0;color:#0f172a;">Heutige Aktionen</h2>
       {pending_html}
 
-      <h2 style="font-size:1rem;margin:18px 0 8px 0;">Aktuelle Positionen</h2>
+      <h2 style="font-size:0.95rem;margin:16px 0 6px 0;color:#0f172a;">Aktuelle Positionen</h2>
       <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
-        <tr style="color:#94a3b8;"><th style="text-align:left;padding:6px 10px;">Titel Name</th><th style="text-align:left;padding:6px 10px;">ISIN</th><th style="text-align:left;padding:6px 10px;">Stueckzahl</th><th style="text-align:left;padding:6px 10px;">Wert</th><th style="text-align:left;padding:6px 10px;">Gewinn/Verlust</th></tr>
+        <tr style="color:#64748b;"><th style="text-align:left;padding:6px 10px;">Titel Name</th><th style="text-align:left;padding:6px 10px;">ISIN</th><th style="text-align:left;padding:6px 10px;">Stueckzahl</th><th style="text-align:left;padding:6px 10px;">Wert</th><th style="text-align:left;padding:6px 10px;">Gewinn/Verlust</th></tr>
         {positions_rows_html}
       </table>
 
-      <h2 style="font-size:1rem;margin:18px 0 8px 0;">Vergleich seit Start</h2>
+      <h2 style="font-size:0.95rem;margin:16px 0 6px 0;color:#0f172a;">Vergleich seit Start</h2>
       <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">{bench_rows}</table>
 
-      <div style="margin-top:24px;text-align:center;">
-        <a href="{DASHBOARD_URL}" style="display:inline-block;background:#38bdf8;color:#0f172a;
-           text-decoration:none;font-weight:600;padding:10px 20px;border-radius:8px;font-size:0.9rem;">
-           Volles Dashboard oeffnen
-        </a>
-      </div>
+      <p style="margin-top:20px;">Volles Dashboard mit Grafiken: <a href="{DASHBOARD_URL}">{DASHBOARD_URL}</a></p>
 
-      <p style="color:#64748b;font-size:0.7rem;line-height:1.4;margin-top:24px;">
+      <p style="color:#94a3b8;font-size:0.7rem;line-height:1.4;margin-top:20px;">
         Keine Anlageberatung, kein echter Handel. Verkauf/Nachkauf erst nach Quittierung.
         Simulation inkl. Swissquote-Richtgebuehren, ohne Gewaehr.
       </p>
@@ -705,7 +755,8 @@ def send_email(subject: str, html_body: str, text_body: str):
     if not SMTP_USER or not SMTP_PASSWORD:
         raise RuntimeError("SMTP_USER / SMTP_PASSWORD nicht gesetzt (als Umgebungsvariablen).")
     msg = MIMEMultipart("alternative")
-    msg["From"] = SMTP_USER
+    msg["From"] = f"Investment Advisory Agent <{SMTP_USER}>"
+    msg["Reply-To"] = SMTP_USER
     msg["To"] = RECIPIENT_EMAIL
     msg["Subject"] = subject
     msg.attach(MIMEText(text_body, "plain", "utf-8"))
@@ -717,7 +768,7 @@ def send_email(subject: str, html_body: str, text_body: str):
 
 
 # ---------------------------------------------------------------------------
-# MAIN (taeglicher Lauf: bewerten, Vorschlaege erzeugen, Mail/Dashboard)
+# MAIN
 # ---------------------------------------------------------------------------
 
 def main():
@@ -734,6 +785,14 @@ def main():
     mark_to_market(state, universe_prices, fx, allowed_classes)
     detect_pending_actions(state, universe_prices, allowed_classes)
 
+    # Performance-Historie je Titel fortschreiben
+    state.setdefault("position_history", {})
+    for pos in state["positions"]:
+        key = f"{pos['ticker']}#{pos.get('buy_date','')}"
+        state["position_history"].setdefault(key, []).append({
+            "date": today, "profit_pct": pos.get("profit_pct"), "value_chf": pos.get("current_value_chf"),
+        })
+
     portfolio_total = portfolio_total_value(state)
     benchmarks = compute_benchmarks(state["start_date"])
     state["value_history"].append({"date": today, "portfolio_chf": round(portfolio_total, 2), **benchmarks})
@@ -747,7 +806,9 @@ def main():
     profit_chf = portfolio_total - BUDGET_CHF
     profit_pct = profit_chf / BUDGET_CHF * 100
     text_positions = positions_table_rows(state["positions"], html=False)
-    text_bench = "\n".join(f"- {n}: {v if v is not None else 'n/a'} CHF" for n, v in benchmarks.items())
+    text_bench = f"- Portfolio (dein Agent): {portfolio_total:.2f} CHF\n" + "\n".join(
+        f"- {n}: {v if v is not None else 'n/a'} CHF" for n, v in benchmarks.items()
+    )
     pending_sells = [a for a in state["pending_actions"] if a["type"] == "sell"]
     text_pending = "\n".join(f"- {a['name']} ({a['isin']}): {a.get('profit_pct',0):+.2f}% -- Dashboard zum Quittieren oeffnen" for a in pending_sells) or "Keine offenen Vorschlaege."
 

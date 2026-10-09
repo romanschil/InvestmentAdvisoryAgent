@@ -12,9 +12,9 @@
       "buy_price_chf": 279.809,
       "buy_date": "2026-10-02",
       "rationale": "Alphabet wird aktuell zu einem im Vergleich zu anderen Magnificent-7-Werten relativ moderaten Kurs gehandelt und bietet solides Wachstumspotenzial durch KI-Integration in Suche und Cloud (Google Cloud). Das KGV ist attraktiv für ein Unternehmen mit dieser Marktstellung.",
-      "current_value_chf": 1740.02,
-      "profit_chf": 73.35,
-      "profit_pct": 4.4
+      "current_value_chf": 1722.29,
+      "profit_chf": 55.62,
+      "profit_pct": 3.34
     },
     {
       "ticker": "NVDA",
@@ -26,9 +26,9 @@
       "buy_price_chf": 190.9789,
       "buy_date": "2026-10-02",
       "rationale": "NVIDIA profitiert strukturell von der anhaltend hohen Nachfrage nach KI-Beschleunigern und Rechenzentrum-Hardware; der aktuelle Kurs bietet nach der Konsolidierung einen günstigen Einstiegspunkt mit mittelfristig weiter intaktem Wachstumspfad.",
-      "current_value_chf": 1727.24,
-      "profit_chf": 60.57,
-      "profit_pct": 3.63
+      "current_value_chf": 1669.84,
+      "profit_chf": 3.17,
+      "profit_pct": 0.19
     },
     {
       "ticker": "VWCE.DE",
@@ -40,9 +40,9 @@
       "buy_price_chf": 159.9155,
       "buy_date": "2026-10-02",
       "rationale": "Der Vanguard FTSE All-World ETF bietet breite globale Diversifikation über tausende Titel und ist ideal für ein ausgewogenes, langfristiges Portfolio als Basisposition – kostengünstig und ohne Einzelwertrisiko.",
-      "current_value_chf": 1687.26,
-      "profit_chf": 20.59,
-      "profit_pct": 1.24
+      "current_value_chf": 1679.54,
+      "profit_chf": 12.88,
+      "profit_pct": 0.77
     }
   ],
   "transactions": [
@@ -173,7 +173,38 @@
       "S&P 500": 5051.18,
       "NASDAQ": 5063.96,
       "Sparkonto": 5000.62
+    },
+    {
+      "date": "2026-10-09",
+      "portfolio_chf": 5071.67,
+      "SMI": 4991.25,
+      "S&P 500": 5027.61,
+      "NASDAQ": 5000.46,
+      "Sparkonto": 5000.72
     }
   ],
-  "pending_actions": []
+  "pending_actions": [],
+  "position_history": {
+    "GOOGL#2026-10-02": [
+      {
+        "date": "2026-10-09",
+        "profit_pct": 3.34,
+        "value_chf": 1722.29
+      }
+    ],
+    "NVDA#2026-10-02": [
+      {
+        "date": "2026-10-09",
+        "profit_pct": 0.19,
+        "value_chf": 1669.84
+      }
+    ],
+    "VWCE.DE#2026-10-02": [
+      {
+        "date": "2026-10-09",
+        "profit_pct": 0.77,
+        "value_chf": 1679.54
+      }
+    ]
+  }
 }

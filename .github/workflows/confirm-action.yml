@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   confirm:
-    if: startsWith(github.event.issue.title, 'CONFIRM:')
+    if: startsWith(github.event.issue.title, 'CONFIRM:') || github.event.issue.title == 'RESTART'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

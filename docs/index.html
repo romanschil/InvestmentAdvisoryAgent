@@ -82,6 +82,19 @@
     </table>
   </div>
 
+  <div class="chart-box">
+    <h2>Portfolio zuruecksetzen</h2>
+    <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:12px;">
+      Setzt alles zurueck auf 5000 CHF, loescht Positionen, Transaktions-Historie
+      und Charts, und waehlt sofort 3 neue Picks. Kann nicht rueckgaengig gemacht werden.
+    </p>
+    <button onclick="if(confirm('Moechtest du wirklich alles zuruecksetzen?')){ window.location.href='https://github.com/romanschil/InvestmentAdvisoryAgent/issues/new?title=RESTART&body=Setzt+das+Portfolio+komplett+zurueck+auf+5000+CHF+mit+neuen+Picks.+Automatisch+generiert+--+bitte+Titel+NICHT+aendern.&labels=restart'; }"
+      style="background:#dc2626;color:#fff;border:none;padding:10px 18px;border-radius:8px;
+             font-size:0.9rem;font-weight:600;cursor:pointer;">
+      Portfolio neu starten
+    </button>
+  </div>
+
   <p class="disclaimer">
     Keine Anlageberatung, kein echter Handel. Simulation auf Basis oeffentlicher Marktdaten.
     Verkauf/Nachkauf erfolgen erst nach Quittierung via GitHub-Issue. Courtage-, Krypto- und

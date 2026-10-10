@@ -364,16 +364,18 @@ def execute_sell_action(state: dict, action: dict, prices: dict, fx: dict) -> di
     return tx
 
 
-def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dict | None:
+def _buy_with_stake(state: dict, ticker: str, stake_chf: float, rationale: str, sources: list, prices: dict, fx: dict) -> dict | None:
+    """Kauft 'ticker' fuer genau stake_chf (inkl. Gebuehren), legt die Position
+    an und bucht cash_chf runter. Gemeinsame Basis fuer Einzel-Nachkauf
+    (execute_buy_action) und die Initialbestueckung bei Neustart."""
     today = date.today().isoformat()
-    meta = UNIVERSE_BY_TICKER.get(action["ticker"])
-    price_native = prices.get(action["ticker"])
-    if not meta or not price_native or state["cash_chf"] <= 0:
+    meta = UNIVERSE_BY_TICKER.get(ticker)
+    price_native = prices.get(ticker)
+    if not meta or not price_native or stake_chf <= 0:
         return None
 
     rate = fx.get(meta["currency"], 1.0) or 1.0
     asset_class = meta["asset_class"]
-    stake_chf = state["cash_chf"]
 
     if meta["currency"] == "CHF":
         fee_native = transaction_fee_for(stake_chf, asset_class)
@@ -390,26 +392,65 @@ def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dic
     price_chf = price_native * rate
     shares = investable_chf / price_chf
     new_pos = {
-        "ticker": action["ticker"], "isin": meta["isin"], "valor": meta.get("valor", "–"),
+        "ticker": ticker, "isin": meta["isin"], "valor": meta.get("valor", "–"),
         "name": meta["name"], "currency": meta["currency"], "asset_class": asset_class,
         "shares": round(shares, 6), "buy_price_native": round(price_native, 2),
         "buy_price_chf": round(price_chf, 4), "cost_basis_chf": round(stake_chf, 2),
         "fee_chf": round(total_fee_chf, 2), "buy_date": today,
-        "rationale": action.get("rationale", ""), "sources": action.get("sources", []),
+        "rationale": rationale, "sources": sources,
     }
     state["positions"].append(new_pos)
     state["cash_chf"] = round(state["cash_chf"] - stake_chf, 2)
 
     tx = {
-        "date": today, "action": "buy", "ticker": action["ticker"],
+        "date": today, "action": "buy", "ticker": ticker,
         "isin": meta["isin"], "valor": meta.get("valor", "–"), "name": meta["name"],
         "asset_class": asset_class, "shares": round(shares, 6), "price_chf": round(price_chf, 2),
-        "fee_chf": round(total_fee_chf, 2), "rationale": action.get("rationale", ""),
-        "sources": action.get("sources", []),
+        "fee_chf": round(total_fee_chf, 2), "rationale": rationale, "sources": sources,
     }
     state["transactions"].append(tx)
-    state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
     return tx
+
+
+def execute_buy_action(state: dict, action: dict, prices: dict, fx: dict) -> dict | None:
+    tx = _buy_with_stake(
+        state, action["ticker"], state["cash_chf"],
+        action.get("rationale", ""), action.get("sources", []), prices, fx,
+    )
+    if tx:
+        state["pending_actions"] = [a for a in state["pending_actions"] if a["id"] != action["id"]]
+    return tx
+
+
+def restart_portfolio() -> dict:
+    """Setzt das Portfolio komplett zurueck: {BUDGET_CHF} CHF, keine
+    Positionen/Historie, und waehlt sofort TOP_N neue Picks (gleich
+    gewichtet), ohne Quittierungs-Umweg -- ausgeloest durch einen
+    expliziten, vom Nutzer bestaetigten Neustart."""
+    fresh_state = {
+        "start_date": date.today().isoformat(),
+        "cash_chf": BUDGET_CHF,
+        "positions": [],
+        "transactions": [],
+        "value_history": [],
+        "pending_actions": [],
+        "position_history": {},
+    }
+    universe_tickers = [u["ticker"] for u in CANDIDATE_UNIVERSE]
+    prices = fetch_prices(universe_tickers)
+    fx = fetch_fx_rates()
+
+    picks = select_new_picks(TOP_N, set(), prices, {"stock", "crypto"})
+    if picks:
+        stake_chf = fresh_state["cash_chf"] / len(picks)
+        for p in picks:
+            _buy_with_stake(
+                fresh_state, p.get("ticker"), stake_chf,
+                p.get("rationale", ""), p.get("sources", []), prices, fx,
+            )
+
+    save_state(fresh_state)
+    return fresh_state
 
 
 def compute_benchmarks(start_date: str) -> dict:
@@ -454,6 +495,12 @@ def confirm_url(action: dict) -> str:
         lines.append(f"Begruendung: {action.get('rationale', '')}")
     body = "\n".join(lines)
     params = urllib.parse.urlencode({"title": title, "body": body, "labels": "confirm"})
+    return f"{ISSUE_BASE_URL}?{params}"
+
+
+def restart_issue_url() -> str:
+    body = "Setzt das Portfolio komplett zurueck auf {} CHF mit neuen Picks. Automatisch generiert -- bitte Titel NICHT aendern.".format(BUDGET_CHF)
+    params = urllib.parse.urlencode({"title": "RESTART", "body": body, "labels": "restart"})
     return f"{ISSUE_BASE_URL}?{params}"
 
 
@@ -686,6 +733,19 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
       <tr><th>Datum</th><th>Aktion</th><th>Ticker</th><th>ISIN</th><th>Valor</th><th>Name</th><th>Klasse</th><th>Stueck</th><th>Gebuehren CHF</th><th>Gewinn CHF</th><th>Gewinn %</th></tr>
       {tx_rows}
     </table>
+  </div>
+
+  <div class="chart-box">
+    <h2>Portfolio zuruecksetzen</h2>
+    <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:12px;">
+      Setzt alles zurueck auf {BUDGET_CHF} CHF, loescht Positionen, Transaktions-Historie
+      und Charts, und waehlt sofort 3 neue Picks. Kann nicht rueckgaengig gemacht werden.
+    </p>
+    <button onclick="if(confirm('Moechtest du wirklich alles zuruecksetzen?')){{ window.location.href='{restart_issue_url()}'; }}"
+      style="background:#dc2626;color:#fff;border:none;padding:10px 18px;border-radius:8px;
+             font-size:0.9rem;font-weight:600;cursor:pointer;">
+      Portfolio neu starten
+    </button>
   </div>
 
   <p class="disclaimer">

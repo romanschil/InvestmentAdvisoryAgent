@@ -1,4 +1,5 @@
 """
+"""
 Taeglicher Investment Advisory Agent -- Portfolio-Modus mit Bestaetigung
 =============================================================================
 Haelt ein fiktives Portfolio in CHF. Erreicht eine Position seit Kauf
@@ -20,10 +21,9 @@ import os
 import json
 import math
 import uuid
-import smtplib
 import urllib.parse
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import urllib.request
+import urllib.error
 from datetime import date
 
 import anthropic
@@ -86,10 +86,8 @@ GITHUB_REPO = "romanschil/InvestmentAdvisoryAgent"
 DASHBOARD_URL = "https://romanschil.github.io/InvestmentAdvisoryAgent/"
 ISSUE_BASE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
 
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+EMAIL_FROM = "Investment Advisory Agent <onboarding@resend.dev>"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 RISK_PROFILE = "ausgewogen"
@@ -498,6 +496,7 @@ def positions_table_rows(positions: list, html: bool) -> str:
     for p in positions:
         profit_pct = p.get("profit_pct") or 0
         color = "#16a34a" if profit_pct >= 0 else "#dc2626"
+        bg = "rgba(22,163,74,0.15)" if profit_pct >= 0 else "rgba(220,38,38,0.15)"
         if html:
             rows.append(
                 f"<tr>"
@@ -505,7 +504,7 @@ def positions_table_rows(positions: list, html: bool) -> str:
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p['isin']}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{fmt_shares(p.get('shares'))}</td>"
                 f"<td style='padding:6px 10px;border-bottom:1px solid #334155;'>{p.get('current_value_chf','n/a')} CHF</td>"
-                f"<td style='padding:6px 10px;border-bottom:1px solid #334155;color:{color};'>{p.get('profit_chf',0):+.2f} CHF ({profit_pct:+.2f}%)</td>"
+                f"<td style='padding:6px 10px;border-bottom:1px solid #334155;background:{bg};color:{color};font-weight:600;'>{p.get('profit_chf',0):+.2f} CHF ({profit_pct:+.2f}%)</td>"
                 f"</tr>"
             )
         else:
@@ -535,6 +534,9 @@ def render_tx_row(tx: dict) -> str:
 def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, weekend: bool) -> str:
     profit_chf = portfolio_total - BUDGET_CHF
     profit_pct = profit_chf / BUDGET_CHF * 100
+
+    profit_bg = "rgba(22,163,74,0.18)" if profit_chf >= 0 else "rgba(220,38,38,0.18)"
+    profit_color = "#4ade80" if profit_chf >= 0 else "#f87171"
 
     pending_html = render_pending_actions(state["pending_actions"])
     positions_rows_html = positions_table_rows(state["positions"], html=True)
@@ -604,7 +606,7 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
 
   <div class="stat-row">
     <div class="stat"><div class="label">Portfolio-Wert</div><div class="value">{portfolio_total:.2f} CHF</div></div>
-    <div class="stat"><div class="label">Gewinn/Verlust</div><div class="value">{profit_chf:+.2f} CHF ({profit_pct:+.2f}%)</div></div>
+    <div class="stat" style="background:{profit_bg};"><div class="label">Gewinn/Verlust</div><div class="value" style="color:{profit_color};">{profit_chf:+.2f} CHF ({profit_pct:+.2f}%)</div></div>
     <div class="stat"><div class="label">Cash (nicht investiert)</div><div class="value">{state['cash_chf']:.2f} CHF</div></div>
   </div>
 
@@ -752,19 +754,33 @@ def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
 
 
 def send_email(subject: str, html_body: str, text_body: str):
-    if not SMTP_USER or not SMTP_PASSWORD:
-        raise RuntimeError("SMTP_USER / SMTP_PASSWORD nicht gesetzt (als Umgebungsvariablen).")
-    msg = MIMEMultipart("alternative")
-    msg["From"] = f"Investment Advisory Agent <{SMTP_USER}>"
-    msg["Reply-To"] = SMTP_USER
-    msg["To"] = RECIPIENT_EMAIL
-    msg["Subject"] = subject
-    msg.attach(MIMEText(text_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(SMTP_USER, RECIPIENT_EMAIL, msg.as_string())
+    """Versand ueber die Resend-API statt Gmail-SMTP: bessere Zustellbarkeit,
+    da Resend eine etablierte, authentifizierte Sende-Domain (SPF/DKIM)
+    betreibt statt jeden Tag ueber eine wechselnde GitHub-Actions-IP zu
+    senden. Ohne eigene verifizierte Domain funktioniert der Testabsender
+    onboarding@resend.dev NUR an die E-Mail-Adresse, mit der das
+    Resend-Konto angelegt wurde -- das Konto muss also mit
+    roman.schilling@bluewin.ch registriert sein."""
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY nicht gesetzt (als Umgebungsvariable).")
+    payload = json.dumps({
+        "from": EMAIL_FROM,
+        "to": [RECIPIENT_EMAIL],
+        "subject": subject,
+        "html": html_body,
+        "text": text_body,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            resp.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Resend-Fehler {e.code}: {e.read().decode('utf-8')}")
 
 
 # ---------------------------------------------------------------------------

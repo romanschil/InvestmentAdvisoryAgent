@@ -1,5 +1,4 @@
 """
-"""
 Taeglicher Investment Advisory Agent -- Portfolio-Modus mit Bestaetigung
 =============================================================================
 Haelt ein fiktives Portfolio in CHF. Erreicht eine Position seit Kauf
@@ -21,9 +20,11 @@ import os
 import json
 import math
 import uuid
+import smtplib
 import urllib.parse
-import urllib.request
-import urllib.error
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.utils import make_msgid, formatdate
 from datetime import date
 
 import anthropic
@@ -86,8 +87,10 @@ GITHUB_REPO = "romanschil/InvestmentAdvisoryAgent"
 DASHBOARD_URL = "https://romanschil.github.io/InvestmentAdvisoryAgent/"
 ISSUE_BASE_URL = f"https://github.com/{GITHUB_REPO}/issues/new"
 
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-EMAIL_FROM = "Investment Advisory Agent <onboarding@resend.dev>"
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 RISK_PROFILE = "ausgewogen"
@@ -754,33 +757,24 @@ def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
 
 
 def send_email(subject: str, html_body: str, text_body: str):
-    """Versand ueber die Resend-API statt Gmail-SMTP: bessere Zustellbarkeit,
-    da Resend eine etablierte, authentifizierte Sende-Domain (SPF/DKIM)
-    betreibt statt jeden Tag ueber eine wechselnde GitHub-Actions-IP zu
-    senden. Ohne eigene verifizierte Domain funktioniert der Testabsender
-    onboarding@resend.dev NUR an die E-Mail-Adresse, mit der das
-    Resend-Konto angelegt wurde -- das Konto muss also mit
-    roman.schilling@bluewin.ch registriert sein."""
-    if not RESEND_API_KEY:
-        raise RuntimeError("RESEND_API_KEY nicht gesetzt (als Umgebungsvariable).")
-    payload = json.dumps({
-        "from": EMAIL_FROM,
-        "to": [RECIPIENT_EMAIL],
-        "subject": subject,
-        "html": html_body,
-        "text": text_body,
-    }).encode("utf-8")
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=payload,
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req) as resp:
-            resp.read()
-    except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Resend-Fehler {e.code}: {e.read().decode('utf-8')}")
+    if not SMTP_USER or not SMTP_PASSWORD:
+        raise RuntimeError("SMTP_USER / SMTP_PASSWORD nicht gesetzt (als Umgebungsvariablen).")
+    msg = MIMEMultipart("alternative")
+    msg["From"] = f"Investment Advisory Agent <{SMTP_USER}>"
+    msg["Reply-To"] = SMTP_USER
+    msg["To"] = RECIPIENT_EMAIL
+    msg["Subject"] = subject
+    # Date und Message-ID explizit setzen -- ohne diese Header wirkt eine
+    # Mail auf Spamfilter oft verdaechtig, da serioese Mailserver sie immer
+    # mitschicken und smtplib sie nicht automatisch ergaenzt.
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=SMTP_USER.split("@")[-1])
+    msg.attach(MIMEText(text_body, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASSWORD)
+        server.sendmail(SMTP_USER, RECIPIENT_EMAIL, msg.as_string())
 
 
 # ---------------------------------------------------------------------------

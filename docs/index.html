@@ -55,10 +55,19 @@
     <canvas id="perfChart" height="260"></canvas>
   </div>
 
-  <div class="chart-box">
-    <h2>Performance einzelner Titel</h2>
-    <canvas id="titleChart" height="260"></canvas>
-  </div>
+  
+          <div class="chart-box">
+            <h2>Alphabet Inc. (A) (GOOGL)</h2>
+            <canvas id="titleChart_0" height="200"></canvas>
+          </div>
+          <div class="chart-box">
+            <h2>NVIDIA Corp. (NVDA)</h2>
+            <canvas id="titleChart_1" height="200"></canvas>
+          </div>
+          <div class="chart-box">
+            <h2>Vanguard FTSE All-World ETF (VWCE.DE)</h2>
+            <canvas id="titleChart_2" height="200"></canvas>
+          </div>
 
   <div class="chart-box">
     <h2>Aktueller Vergleich (hypothetisch, 5000 CHF seit 2026-10-02)</h2>
@@ -101,9 +110,46 @@
     }
   });
 
-  new Chart(document.getElementById('titleChart'), {
+  
+  new Chart(document.getElementById('titleChart_0'), {
     type: 'line',
-    data: { labels: ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-06", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-09"], datasets: [{"label": "Alphabet Inc. (A)", "data": [null, null, null, null, null, null, null, 3.43, 3.43], "borderColor": "#38bdf8", "tension": 0.2, "pointRadius": 0, "spanGaps": true}, {"label": "NVIDIA Corp.", "data": [null, null, null, null, null, null, null, 0.28, 0.28], "borderColor": "#f472b6", "tension": 0.2, "pointRadius": 0, "spanGaps": true}, {"label": "Vanguard FTSE All-World ETF", "data": [null, null, null, null, null, null, null, 0.88, 0.88], "borderColor": "#facc15", "tension": 0.2, "pointRadius": 0, "spanGaps": true}] },
+    data: {
+      labels: ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-06", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-09"],
+      datasets: [{ label: 'Alphabet Inc. (A) (%)', data: [null, null, null, null, null, null, null, 3.43, 3.43],
+        borderColor: '#38bdf8', tension: 0.2, pointRadius: 0, spanGaps: true }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 8 } },
+        y: { ticks: { color: '#94a3b8', callback: (v) => v + '%' } }
+      },
+      plugins: { legend: { labels: { color: '#e2e8f0' } } }
+    }
+  });
+  new Chart(document.getElementById('titleChart_1'), {
+    type: 'line',
+    data: {
+      labels: ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-06", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-09"],
+      datasets: [{ label: 'NVIDIA Corp. (%)', data: [null, null, null, null, null, null, null, 0.28, 0.28],
+        borderColor: '#f472b6', tension: 0.2, pointRadius: 0, spanGaps: true }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 8 } },
+        y: { ticks: { color: '#94a3b8', callback: (v) => v + '%' } }
+      },
+      plugins: { legend: { labels: { color: '#e2e8f0' } } }
+    }
+  });
+  new Chart(document.getElementById('titleChart_2'), {
+    type: 'line',
+    data: {
+      labels: ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-06", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-09"],
+      datasets: [{ label: 'Vanguard FTSE All-World ETF (%)', data: [null, null, null, null, null, null, null, 0.88, 0.88],
+        borderColor: '#facc15', tension: 0.2, pointRadius: 0, spanGaps: true }]
+    },
     options: {
       responsive: true,
       scales: {

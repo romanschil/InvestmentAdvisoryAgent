@@ -457,7 +457,11 @@ def confirm_url(action: dict) -> str:
     return f"{ISSUE_BASE_URL}?{params}"
 
 
-def render_pending_actions(pending_actions: list) -> str:
+def render_pending_actions(pending_actions: list, interactive: bool = True) -> str:
+    """interactive=True (Dashboard): mit anklickbaren Quittier-/Quellen-Links.
+    interactive=False (E-Mail): nur Text, keine Links -- viele codierte Links
+    in einer Mail (GitHub-Issue-URLs mit langen Query-Strings) werden von
+    Spamfiltern leicht als verdaechtig eingestuft."""
     sells = [a for a in pending_actions if a["type"] == "sell"]
     if not sells:
         return "<p style='color:#94a3b8;'>Keine offenen Vorschlaege -- keine Position ueber der Gewinn-Schwelle.</p>"
@@ -465,25 +469,40 @@ def render_pending_actions(pending_actions: list) -> str:
     blocks = []
     for sell in sells:
         buy = next((a for a in pending_actions if a["type"] == "buy" and a.get("linked_sell_id") == sell["id"]), None)
-        sell_line = (
-            f"<div style='margin-bottom:4px;'>"
-            f"<strong>{sell['name']}</strong> ({sell['isin']}) hat {sell.get('profit_pct', 0):+.2f}% erreicht. "
-            f"<a href='{confirm_url(sell)}' style='color:#38bdf8;'>Titel verkaufen (quittieren)</a>"
-            f"</div>"
-        )
+        if interactive:
+            sell_line = (
+                f"<div style='margin-bottom:4px;'>"
+                f"<strong>{sell['name']}</strong> ({sell['isin']}) hat {sell.get('profit_pct', 0):+.2f}% erreicht. "
+                f"<a href='{confirm_url(sell)}' style='color:#38bdf8;'>Titel verkaufen (quittieren)</a>"
+                f"</div>"
+            )
+        else:
+            sell_line = (
+                f"<div style='margin-bottom:4px;'>"
+                f"<strong>{sell['name']}</strong> ({sell['isin']}) hat {sell.get('profit_pct', 0):+.2f}% erreicht -- "
+                f"Vorschlag: verkaufen (im Dashboard quittieren)."
+                f"</div>"
+            )
         if buy:
             buy_status = " (bereits von dir quittiert, wartet auf Verkaufsbestaetigung)" if buy.get("status") == "confirm_requested" else ""
-            sources = buy.get("sources", [])
-            sources_html = ""
-            if sources:
-                links = " · ".join(f"<a href='{s}' style='color:#64748b;' target='_blank'>Quelle {i+1}</a>" for i, s in enumerate(sources[:5]))
-                sources_html = f"<div style='font-size:0.75rem;color:#64748b;margin-top:2px;'>{links}</div>"
-            buy_line = (
-                f"<div style='margin-bottom:14px;margin-left:12px;color:#cbd5e1;'>"
-                f"Vorschlag Nachkauf: <strong>{buy['name']}</strong> ({buy['isin']}) -- {buy.get('rationale','')} "
-                f"<a href='{confirm_url(buy)}' style='color:#38bdf8;'>Kauf quittieren</a>{buy_status}"
-                f"{sources_html}</div>"
-            )
+            if interactive:
+                sources = buy.get("sources", [])
+                sources_html = ""
+                if sources:
+                    links = " · ".join(f"<a href='{s}' style='color:#64748b;' target='_blank'>Quelle {i+1}</a>" for i, s in enumerate(sources[:5]))
+                    sources_html = f"<div style='font-size:0.75rem;color:#64748b;margin-top:2px;'>{links}</div>"
+                buy_line = (
+                    f"<div style='margin-bottom:14px;margin-left:12px;color:#cbd5e1;'>"
+                    f"Vorschlag Nachkauf: <strong>{buy['name']}</strong> ({buy['isin']}) -- {buy.get('rationale','')} "
+                    f"<a href='{confirm_url(buy)}' style='color:#38bdf8;'>Kauf quittieren</a>{buy_status}"
+                    f"{sources_html}</div>"
+                )
+            else:
+                buy_line = (
+                    f"<div style='margin-bottom:14px;margin-left:12px;color:#cbd5e1;'>"
+                    f"Vorschlag Nachkauf: <strong>{buy['name']}</strong> ({buy['isin']}) -- {buy.get('rationale','')}{buy_status}"
+                    f"</div>"
+                )
         else:
             buy_line = "<div style='margin-bottom:14px;margin-left:12px;color:#94a3b8;'>Kein Ersatz-Vorschlag verfuegbar.</div>"
         blocks.append(sell_line + buy_line)
@@ -557,20 +576,41 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     chart_nasdaq = json.dumps([h.get("NASDAQ") for h in vh])
     chart_savings = json.dumps([h.get("Sparkonto") for h in vh])
 
-    # Performance einzelner Titel (aktuell gehaltene Positionen)
+    # Performance einzelner Titel -- EIN eigenes Diagramm pro Position
     title_labels = [h["date"] for h in vh]
     colors = ["#38bdf8", "#f472b6", "#facc15", "#a78bfa", "#34d399"]
-    title_datasets = []
+    title_charts_html = []
+    title_charts_js = []
     for i, pos in enumerate(state["positions"]):
         key = f"{pos['ticker']}#{pos.get('buy_date','')}"
         hist_map = {h["date"]: h.get("profit_pct") for h in state.get("position_history", {}).get(key, [])}
         series = [hist_map.get(d) for d in title_labels]
-        title_datasets.append({
-            "label": pos["name"], "data": series,
-            "borderColor": colors[i % len(colors)], "tension": 0.2, "pointRadius": 0, "spanGaps": True,
-        })
-    title_chart_labels = json.dumps(title_labels)
-    title_chart_datasets = json.dumps(title_datasets)
+        canvas_id = f"titleChart_{i}"
+        color = colors[i % len(colors)]
+        title_charts_html.append(f"""
+          <div class="chart-box">
+            <h2>{pos['name']} ({pos['ticker']})</h2>
+            <canvas id="{canvas_id}" height="200"></canvas>
+          </div>""")
+        title_charts_js.append(f"""
+  new Chart(document.getElementById('{canvas_id}'), {{
+    type: 'line',
+    data: {{
+      labels: {json.dumps(title_labels)},
+      datasets: [{{ label: '{pos["name"]} (%)', data: {json.dumps(series)},
+        borderColor: '{color}', tension: 0.2, pointRadius: 0, spanGaps: true }}]
+    }},
+    options: {{
+      responsive: true,
+      scales: {{
+        x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 8 }} }},
+        y: {{ ticks: {{ color: '#94a3b8', callback: (v) => v + '%' }} }}
+      }},
+      plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
+    }}
+  }});""")
+    title_charts_html_str = "".join(title_charts_html)
+    title_charts_js_str = "".join(title_charts_js)
 
     weekend_note = ""
     if weekend:
@@ -633,10 +673,7 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     <canvas id="perfChart" height="260"></canvas>
   </div>
 
-  <div class="chart-box">
-    <h2>Performance einzelner Titel</h2>
-    <canvas id="titleChart" height="260"></canvas>
-  </div>
+  {title_charts_html_str}
 
   <div class="chart-box">
     <h2>Aktueller Vergleich (hypothetisch, {BUDGET_CHF} CHF seit {state['start_date']})</h2>
@@ -679,18 +716,7 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     }}
   }});
 
-  new Chart(document.getElementById('titleChart'), {{
-    type: 'line',
-    data: {{ labels: {title_chart_labels}, datasets: {title_chart_datasets} }},
-    options: {{
-      responsive: true,
-      scales: {{
-        x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 8 }} }},
-        y: {{ ticks: {{ color: '#94a3b8', callback: (v) => v + '%' }} }}
-      }},
-      plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
-    }}
-  }});
+  {title_charts_js_str}
 </script>
 </body>
 </html>"""
@@ -705,7 +731,7 @@ def render_email_html(state, benchmarks, portfolio_total, weekend) -> str:
     profit_pct = profit_chf / BUDGET_CHF * 100
     profit_color = "#16a34a" if profit_chf >= 0 else "#dc2626"
 
-    pending_html = render_pending_actions(state["pending_actions"])
+    pending_html = render_pending_actions(state["pending_actions"], interactive=False)
     positions_rows_html = positions_table_rows(state["positions"], html=True)
     bench_rows = f"<tr style='font-weight:600;'><td style='padding:4px 10px;'>Portfolio (dein Agent)</td><td style='padding:4px 10px;'>{portfolio_total:.2f} CHF</td></tr>"
     bench_rows += "".join(

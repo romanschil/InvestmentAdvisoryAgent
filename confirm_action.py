@@ -18,10 +18,23 @@ import investment_advisory_agent as agent
 
 
 def main():
-    title = os.environ.get("ISSUE_TITLE", "")
-    match = re.match(r"CONFIRM:(sell|buy):([0-9a-f]+)", title.strip())
+    title = os.environ.get("ISSUE_TITLE", "").strip()
+
+    if title == "RESTART":
+        state = agent.restart_portfolio()
+        print(f"Portfolio zurueckgesetzt. Neue Positionen: {[p['ticker'] for p in state['positions']]}")
+        portfolio_total = agent.portfolio_total_value(state)
+        benchmarks = agent.compute_benchmarks(state["start_date"])
+        os.makedirs(agent.DASHBOARD_DIR, exist_ok=True)
+        html = agent.render_dashboard(state, benchmarks, portfolio_total, agent.is_weekend())
+        with open(agent.DASHBOARD_FILE, "w", encoding="utf-8") as f:
+            f.write(html)
+        print("Fertig.")
+        return
+
+    match = re.match(r"CONFIRM:(sell|buy):([0-9a-f]+)", title)
     if not match:
-        print(f"Kein gueltiger Confirm-Titel ('{title}'), breche ab.")
+        print(f"Kein gueltiger Confirm-/Restart-Titel ('{title}'), breche ab.")
         sys.exit(0)
     action_type, action_id = match.group(1), match.group(2)
 

@@ -72,6 +72,8 @@ CANDIDATE_UNIVERSE = [
     {"ticker": "UHR.SW",  "isin": "CH0012255151", "valor": "1225515",  "name": "Swatch Group AG",       "currency": "CHF", "asset_class": "stock"},
     {"ticker": "VOO",     "isin": "US9229083632", "valor": "–",        "name": "Vanguard S&P 500 ETF",  "currency": "USD", "asset_class": "stock"},
     {"ticker": "VWCE.DE", "isin": "IE00BK5BQT80", "valor": "–",        "name": "Vanguard FTSE All-World ETF", "currency": "EUR", "asset_class": "stock"},
+    {"ticker": "SWDA.SW", "isin": "IE00B4L5Y983", "valor": "–",        "name": "iShares Core MSCI World ETF", "currency": "USD", "asset_class": "stock"},
+    {"ticker": "CSSMI.SW","isin": "CH0008899764", "valor": "889976",   "name": "iShares SMI ETF (CH)",  "currency": "CHF", "asset_class": "stock"},
     {"ticker": "BTC-USD", "isin": "Kein ISIN (Spot)", "valor": "–", "name": "Bitcoin",  "currency": "USD", "asset_class": "crypto"},
     {"ticker": "ETH-USD", "isin": "Kein ISIN (Spot)", "valor": "–", "name": "Ethereum", "currency": "USD", "asset_class": "crypto"},
     {"ticker": "SOL-USD", "isin": "Kein ISIN (Spot)", "valor": "–", "name": "Solana",   "currency": "USD", "asset_class": "crypto"},

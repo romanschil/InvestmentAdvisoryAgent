@@ -468,6 +468,53 @@ def portfolio_total_value(state: dict) -> float:
     return state["cash_chf"] + sum(safe_value(p.get("current_value_chf")) for p in state["positions"])
 
 
+def fetch_title_history(pos: dict) -> list:
+    """Rekonstruiert die Gewinn/Verlust-Historie (%) einer Position ab ihrem
+    tatsaechlichen Kaufdatum -- direkt aus echten historischen Kursen (und,
+    bei Fremdwaehrung, historischen FX-Kursen), nicht aus taeglich mitgeloggten
+    Werten. Dadurch ist die Historie immer vollstaendig seit dem Kauf da,
+    unabhaengig davon, seit wann der Agent laeuft."""
+    buy_date = pos.get("buy_date")
+    if not buy_date:
+        return []
+    try:
+        native_hist = yf.Ticker(pos["ticker"]).history(start=buy_date)
+    except Exception:
+        return []
+    if native_hist.empty:
+        return []
+
+    currency = pos.get("currency", "CHF")
+    fx_closes = None
+    if currency != "CHF":
+        pair = {"USD": "USDCHF=X", "EUR": "EURCHF=X"}.get(currency)
+        if pair:
+            try:
+                fx_hist = yf.Ticker(pair).history(start=buy_date)
+                if not fx_hist.empty:
+                    fx_closes = fx_hist["Close"].reindex(native_hist.index).ffill().bfill()
+            except Exception:
+                fx_closes = None
+
+    cost_basis = pos.get("cost_basis_chf") or (pos.get("shares", 0) * pos.get("buy_price_chf", 0))
+    result = []
+    for idx, price in native_hist["Close"].items():
+        if price is None or (isinstance(price, float) and math.isnan(price)):
+            continue
+        if currency == "CHF":
+            rate = 1.0
+        elif fx_closes is not None:
+            rate = fx_closes.get(idx)
+            if rate is None or (isinstance(rate, float) and math.isnan(rate)):
+                continue
+        else:
+            continue
+        value_chf = pos.get("shares", 0) * price * rate
+        profit_pct = (value_chf - cost_basis) / cost_basis * 100 if cost_basis else 0.0
+        result.append({"date": idx.strftime("%Y-%m-%d"), "profit_pct": round(profit_pct, 2)})
+    return result
+
+
 def has_crypto_now(state: dict) -> bool:
     return any(p.get("asset_class") == "crypto" for p in state["positions"])
 
@@ -623,15 +670,18 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     chart_nasdaq = json.dumps([h.get("NASDAQ") for h in vh])
     chart_savings = json.dumps([h.get("Sparkonto") for h in vh])
 
-    # Performance einzelner Titel -- EIN eigenes Diagramm pro Position
-    title_labels = [h["date"] for h in vh]
+    # Performance einzelner Titel -- EIN eigenes Diagramm pro Position,
+    # rueckwirkend aus echten historischen Kursen seit dem Kaufdatum
+    keep_weekends_titles = has_crypto_now(state)
     colors = ["#38bdf8", "#f472b6", "#facc15", "#a78bfa", "#34d399"]
     title_charts_html = []
     title_charts_js = []
     for i, pos in enumerate(state["positions"]):
-        key = f"{pos['ticker']}#{pos.get('buy_date','')}"
-        hist_map = {h["date"]: h.get("profit_pct") for h in state.get("position_history", {}).get(key, [])}
-        series = [hist_map.get(d) for d in title_labels]
+        hist = fetch_title_history(pos)
+        if not keep_weekends_titles:
+            hist = [h for h in hist if date.fromisoformat(h["date"]).weekday() < 5]
+        labels = [h["date"] for h in hist]
+        series = [h["profit_pct"] for h in hist]
         canvas_id = f"titleChart_{i}"
         color = colors[i % len(colors)]
         title_charts_html.append(f"""
@@ -643,7 +693,7 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
   new Chart(document.getElementById('{canvas_id}'), {{
     type: 'line',
     data: {{
-      labels: {json.dumps(title_labels)},
+      labels: {json.dumps(labels)},
       datasets: [{{ label: '{pos["name"]} (%)', data: {json.dumps(series)},
         borderColor: '{color}', tension: 0.2, pointRadius: 0, spanGaps: true }}]
     }},
@@ -880,14 +930,6 @@ def main():
 
     mark_to_market(state, universe_prices, fx, allowed_classes)
     detect_pending_actions(state, universe_prices, allowed_classes)
-
-    # Performance-Historie je Titel fortschreiben
-    state.setdefault("position_history", {})
-    for pos in state["positions"]:
-        key = f"{pos['ticker']}#{pos.get('buy_date','')}"
-        state["position_history"].setdefault(key, []).append({
-            "date": today, "profit_pct": pos.get("profit_pct"), "value_chf": pos.get("current_value_chf"),
-        })
 
     portfolio_total = portfolio_total_value(state)
     benchmarks = compute_benchmarks(state["start_date"])

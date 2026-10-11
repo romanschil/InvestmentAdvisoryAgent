@@ -511,7 +511,12 @@ def fetch_title_history(pos: dict) -> list:
             continue
         value_chf = pos.get("shares", 0) * price * rate
         profit_pct = (value_chf - cost_basis) / cost_basis * 100 if cost_basis else 0.0
-        result.append({"date": idx.strftime("%Y-%m-%d"), "profit_pct": round(profit_pct, 2)})
+        price_chf = price * rate
+        result.append({
+            "date": idx.strftime("%Y-%m-%d"),
+            "profit_pct": round(profit_pct, 2),
+            "price_chf": round(price_chf, 4),
+        })
     return result
 
 
@@ -681,7 +686,7 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
         if not keep_weekends_titles:
             hist = [h for h in hist if date.fromisoformat(h["date"]).weekday() < 5]
         labels = [h["date"] for h in hist]
-        series = [h["profit_pct"] for h in hist]
+        series = [h["price_chf"] for h in hist]
         canvas_id = f"titleChart_{i}"
         color = colors[i % len(colors)]
         title_charts_html.append(f"""
@@ -694,14 +699,14 @@ def render_dashboard(state: dict, benchmarks: dict, portfolio_total: float, week
     type: 'line',
     data: {{
       labels: {json.dumps(labels)},
-      datasets: [{{ label: '{pos["name"]} (%)', data: {json.dumps(series)},
+      datasets: [{{ label: '{pos["name"]} (CHF)', data: {json.dumps(series)},
         borderColor: '{color}', tension: 0.2, pointRadius: 0, spanGaps: true }}]
     }},
     options: {{
       responsive: true,
       scales: {{
         x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 8 }} }},
-        y: {{ ticks: {{ color: '#94a3b8', callback: (v) => v + '%' }} }}
+        y: {{ ticks: {{ color: '#94a3b8', callback: (v) => v + ' CHF' }} }}
       }},
       plugins: {{ legend: {{ labels: {{ color: '#e2e8f0' }} }} }}
     }}

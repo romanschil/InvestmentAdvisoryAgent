@@ -22,9 +22,21 @@ def main():
 
     if title == "RESTART":
         state = agent.restart_portfolio()
-        print(f"Portfolio zurueckgesetzt. Neue Positionen: {[p['ticker'] for p in state['positions']]}")
+        if not state["positions"]:
+            print("WARNUNG: Restart hat keine Positionen gekauft (z.B. API-Fehler). "
+                  "Der naechste taegliche Lauf versucht es ueber das Sicherheitsnetz erneut.")
+        else:
+            print(f"Portfolio zurueckgesetzt. Neue Positionen: {[p['ticker'] for p in state['positions']]}")
+
+        # Sofort einen Chart-Datenpunkt fuer heute speichern, statt bis zum
+        # naechsten taeglichen Lauf zu warten.
         portfolio_total = agent.portfolio_total_value(state)
         benchmarks = agent.compute_benchmarks(state["start_date"])
+        state["value_history"].append({
+            "date": state["start_date"], "portfolio_chf": round(portfolio_total, 2), **benchmarks
+        })
+        agent.save_state(state)
+
         os.makedirs(agent.DASHBOARD_DIR, exist_ok=True)
         html = agent.render_dashboard(state, benchmarks, portfolio_total, agent.is_weekend())
         with open(agent.DASHBOARD_FILE, "w", encoding="utf-8") as f:

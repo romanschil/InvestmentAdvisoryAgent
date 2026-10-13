@@ -94,13 +94,13 @@
   new Chart(document.getElementById('perfChart'), {
     type: 'line',
     data: {
-      labels: ["2026-10-13"],
+      labels: ["2026-10-13", "2026-10-13"],
       datasets: [
-        { label: 'Portfolio', data: [5000], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
-        { label: 'SMI', data: [null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
-        { label: 'S&P 500', data: [null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
-        { label: 'NASDAQ', data: [null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
-        { label: 'Sparkonto', data: [5000.0], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
+        { label: 'Portfolio', data: [5000, 5000], borderColor: '#38bdf8', tension: 0.2, pointRadius: 0 },
+        { label: 'SMI', data: [null, null], borderColor: '#f472b6', tension: 0.2, pointRadius: 0 },
+        { label: 'S&P 500', data: [null, null], borderColor: '#facc15', tension: 0.2, pointRadius: 0 },
+        { label: 'NASDAQ', data: [null, null], borderColor: '#a78bfa', tension: 0.2, pointRadius: 0 },
+        { label: 'Sparkonto', data: [5000.0, 5000.0], borderColor: '#64748b', borderDash: [4,4], pointRadius: 0 }
       ]
     },
     options: {

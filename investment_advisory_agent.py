@@ -519,6 +519,11 @@ def fetch_title_history(pos: dict) -> list:
             "profit_pct": round(profit_pct, 2),
             "price_chf": round(price_chf, 4),
         })
+
+    if not result:
+        # Yahoo Finance hat fuer "heute" (frisch gekaufter Titel) oft noch
+        # keine Daten -- dann wenigstens den Kaufpunkt selbst zeigen.
+        result = [{"date": buy_date, "profit_pct": 0.0, "price_chf": round(pos.get("buy_price_chf", 0), 4)}]
     return result
 
 
@@ -937,6 +942,20 @@ def main():
 
     mark_to_market(state, universe_prices, fx, allowed_classes)
     detect_pending_actions(state, universe_prices, allowed_classes)
+
+    # Sicherheitsnetz: Portfolio ist leer, aber das Cash wurde nie investiert
+    # (z.B. weil ein Restart mangels API-Zugriff keine Picks waehlen konnte).
+    # Statt dauerhaft leer zu bleiben, hier automatisch nachholen.
+    if not state["positions"] and state["cash_chf"] >= BUDGET_CHF - 1:
+        picks = select_new_picks(TOP_N, set(), universe_prices, allowed_classes)
+        if picks:
+            stake_chf = state["cash_chf"] / len(picks)
+            for p in picks:
+                _buy_with_stake(
+                    state, p.get("ticker"), stake_chf,
+                    p.get("rationale", ""), p.get("sources", []), universe_prices, fx,
+                )
+            print(f"Sicherheitsnetz ausgeloest: {len(picks)} neue Picks gekauft.")
 
     portfolio_total = portfolio_total_value(state)
     benchmarks = compute_benchmarks(state["start_date"])

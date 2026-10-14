@@ -1,0 +1,3 @@
+/* basic styles for the tiny React app */
+body{margin:0;background:#f8fafc;color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+button{padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;cursor:pointer}

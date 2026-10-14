@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+portalocker
+pandas
+yfinance
+anthropic
+python-dotenv

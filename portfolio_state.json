@@ -83,6 +83,14 @@
       "S&P 500": 4940.5,
       "NASDAQ": 4856.72,
       "Sparkonto": 5000.82
+    },
+    {
+      "date": "2026-10-22",
+      "portfolio_chf": 5000,
+      "SMI": 5224.33,
+      "S&P 500": 4969.07,
+      "NASDAQ": 4907.82,
+      "Sparkonto": 5000.92
     }
   ],
   "pending_actions": [],
